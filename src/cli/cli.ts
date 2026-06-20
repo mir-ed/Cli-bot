@@ -62,12 +62,12 @@ program
     });
 
 program
-    .argument('<command...>')
+    .argument('[command...]')
     .action(async (commandParts) => {
-
-        const [cmd, ...args] = commandParts;
+        const [cmd = '', ...args] = commandParts ?? [];
         const devMode = await runDevMode(cmd, args);
         // console.log(devMode.pid)
     })
 
 program.parse(process.argv);
+

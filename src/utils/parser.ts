@@ -5,10 +5,12 @@
 
 
 
-import { log } from "console";
-import type { parsedInput, parsedError, devResponse, softSignal } from "../utils/types.js"
+import type { parsedInput, parsedError, devResponse, softSignal, analysis, CommandMeta, confirmCmdType } from "../utils/types.js"
 import { exitCode } from "process";
-import { subscribe } from "diagnostics_channel";
+
+import { heuristicWords, errorClassifications, strongSignalPatterns, commandRegistry } from "./error.js";
+import { distance, closest } from "fastest-levenshtein";
+
 
 
 export const parseInput = (input: string) => {
@@ -45,53 +47,9 @@ const CONTROL_CHAR_REGEX = /[\r\t\b\f\v]/g;
 
 const SPINNER_REGEX = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g;
 
-const heuristicWords = {
-    // High severity - explicit errors
-    error: 1.0, exception: 1.0, failed: 0.9, failure: 0.9,
-    fatal: 0.9, crash: 0.8, panic: 0.9, abort: 0.8, died: 0.8,
 
-    // Error types (can appear as substrings)
-    referenceerror: 1.0, typeerror: 1.0, syntaxerror: 1.0, rangeerror: 1.0,
-    urierror: 0.9, parseerror: 0.9, assertionerror: 0.9, ioerror: 0.9, oserror: 0.8,
-    networkerror: 0.9, timeouterror: 0.9, connectionerror: 0.9,
 
-    // Code-level issues
-    undefined: 0.7, null: 0.6, invalid: 0.7, unexpected: 0.6,
-    unhandled: 0.8, uncaught: 0.8, missing: 0.7, notfound: 0.8,
-    denied: 0.7, forbidden: 0.7, unauthorized: 0.7, timeout: 0.7, refused: 0.8,
 
-    // Soft signals
-    warning: 0.4, warn: 0.4, deprecated: 0.3, notice: 0.2, info: 0.1, debug: 0.1,
-
-    // System / environment
-    permission: 0.7, eacces: 0.8, enoent: 0.8, econnrefused: 0.9, eaddrinuse: 0.8,
-    enotdir: 0.7, emfile: 0.7, enomem: 0.7,
-    segfault: 0.9, sigsegv: 0.9,
-
-    // Dependency / build
-    "module not found": 1.0, "cannot find": 0.9, "not found": 0.9, "not installed": 0.8, "missing dependency": 0.9,
-    "build failed": 0.9, "compilation failed": 0.9, "npm err": 0.9, "yarn error": 0.9,
-
-    // Database / API
-    "connection refused": 0.9, "no such host": 0.9, "dns lookup": 0.7, "query failed": 0.8,
-    "constraint violation": 0.8, "duplicate key": 0.7,
-
-    // Process
-    "exit code": 0.6, "killed": 0.7, "segmentation fault": 0.9, "illegal instruction": 0.9,
-    "floating point exception": 0.9,
-
-    // Network
-    "network unreachable": 0.8, "host unreachable": 0.8, "no route": 0.7, offline: 0.6, socket: 0.5,
-
-    // Generic failures
-    fail: 0.8, broken: 0.7, corrupted: 0.8, malformed: 0.7, incomplete: 0.6,
-
-    // system/shell error 
-    "not recognized": 1.0, "permission denied": 1.0, "no such file or directory": 1.0,
-    "command not found": 1.0, "no route to host": 1.0, "unknown host": 1.0,
-    "server not found": 1.0, "address already in use": 1.0,
-
-};
 
 
 function normalize(stderr: string): string {
@@ -105,13 +63,57 @@ function normalize(stderr: string): string {
 }
 
 
+
+
+function escapeRegex(str: string) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const keyWordPatterns = Object.entries(heuristicWords).map(([keyword, weight]) => ({
     keyword,
     weight,
-    wordBoundary: new RegExp(`\\b${keyword}\\b`, "i"),
-    subString: new RegExp(keyword, "i"),
+    wordBoundary: keyword.includes(" ")
+        ? new RegExp(escapeRegex(keyword), "i")
+        : new RegExp(`\\b${keyword}\\b`, "i"),
+    subString: keyword.includes(" ")
+        ? new RegExp(escapeRegex(keyword), "i")
+        : new RegExp(keyword, "i"),
 }))
 
+
+// also this 
+const keywordIndex = new Map();
+
+for (const category of errorClassifications) {
+    const type = category.type;
+
+    for (const { word, weight } of category.keywords) {
+        const existing = keywordIndex.get(word) || [];
+
+        existing.push({ type, weight });
+
+        keywordIndex.set(word, existing);
+    }
+}
+
+const strongSignalLayer = (n: string) => {
+    for (const pattern of strongSignalPatterns) {
+        const match = n.match(pattern);
+        const result = match ? match[0] : null;
+        if (result) {
+            return {
+                type: "regex",
+                MatchRegex: result,
+                confidence: 0.9
+            }
+        }
+    }
+    return {
+        type: "regex",
+        MatchRegex: null,
+        confidence: 0
+    }
+}
 
 const softSignalLayer = (n: string) => {
 
@@ -128,22 +130,95 @@ const softSignalLayer = (n: string) => {
         }
     }
 
-    const confidence = score > 0 ? score / count : 0;
+    const confidence = score > 0 ? Math.min(1, Math.log1p(score) * 0.7 + Math.log1p(count) * 0.3) : 0;
 
     return {
+        type: "heuristic",
         softSignalScore: score,
         matchedKeyword: matched,
         confidence: confidence
     }
 }
 
+// study this
+const errorTypeClassifier = (n: string) => {
+    const scores = Object.create(null);
+
+    for (const [keyword, rules] of keywordIndex) {
+        if (n.includes(keyword)) {
+            for (const rule of rules) {
+                scores[rule.type] =
+                    (scores[rule.type] || 0) + rule.weight;
+            }
+        }
+    }
+
+    const total = Number(Object.values(scores).reduce((a: any, b: any) => {
+        return a + b
+    }, 0));
+
+    for (const key in scores) {
+        scores[key] = scores[key] / total;
+    }
+
+    return scores;
+};
+
 export const classifyStderr = (chunk: string) => {
+
+
     const Signal = [];
     const n = normalize(chunk)
+    const strongSignal = strongSignalLayer(n);
     const softSignalObj: softSignal = softSignalLayer(n)
-    Signal.push(softSignalObj)
+    const ErrorType = errorTypeClassifier(n)
 
-    return Signal
+
+    Signal.push(strongSignal, softSignalObj, ErrorType)
+
+
+    const WEIGHTS = {
+        regex: 0.5,
+        type: 0.3,
+        heuristic: softSignalObj.matchedKeyword.includes("warning")
+            ? 0.1
+            : 0.2,
+    };
+
+
+    let typeScore = Number(Object.values(ErrorType).reduce((a: any, b: any) => {
+        return a + b
+    }, 0));
+    //console.log(typeScore);
+
+
+    const finalScore =
+        strongSignal.confidence * WEIGHTS.regex +
+        typeScore * WEIGHTS.type +
+        softSignalObj.confidence * WEIGHTS.heuristic;
+
+    const analysis: analysis = {
+        finalScore: finalScore,
+        confidenceLevel:
+            finalScore < 0.4
+                ? "low"
+                : finalScore < 0.75
+                    ? "medium"
+                    : "high",
+        topSignals: [
+            `regex: ${strongSignal.MatchRegex}`,
+            `heuristic: ${softSignalObj.matchedKeyword}`
+        ],
+        typeGuess: ErrorType
+
+        // }
+
+    }
+
+    return {
+        analysis: analysis,
+        n: n
+    }
 }
 
 
@@ -152,40 +227,40 @@ export const classifyStderr = (chunk: string) => {
 
 
 
-export const parseError = async (stderr: string) => {
-    const n = normalize(stderr)
-    if (!n) {
-        return {
-            content: n,
-            eventType: "IGNORE"
-        } as unknown as parsedError
-    }
-    const Error_pattern = [
-        "error", "failed", "exception", "fatal", "panic", "traceback", "undefined", "cannot", "unable", "referenceerror:"
-    ]
-    const hasErrorPattern = Error_pattern.some((pattern) => n.includes(pattern));
+// export const parseError = async (stderr: string) => {
+//     const n = normalize(stderr)
+//     if (!n) {
+//         return {
+//             content: n,
+//             eventType: "IGNORE"
+//         } as unknown as parsedError
+//     }
+//     const Error_pattern = [
+//         "error", "failed", "exception", "fatal", "panic", "traceback", "undefined", "cannot", "unable", "referenceerror:"
+//     ]
+//     const hasErrorPattern = Error_pattern.some((pattern) => n.includes(pattern));
 
 
-    const IsFailure = exitCode !== 0;
+//     const IsFailure = exitCode !== 0;
 
 
-    if (IsFailure) {
-        return {
-            content: n,
-            eventType: "ERROR"
-        } as unknown as parsedError
-    } else if (hasErrorPattern) {
-        return {
-            content: n,
-            eventType: "WARNING"
-        } as unknown as parsedError
-    } else {
-        return {
-            content: n,
-            eventType: "IGNORE"
-        } as unknown as parsedError
-    }
-}
+//     if (IsFailure) {
+//         return {
+//             content: n,
+//             eventType: "ERROR"
+//         } as unknown as parsedError
+//     } else if (hasErrorPattern) {
+//         return {
+//             content: n,
+//             eventType: "WARNING"
+//         } as unknown as parsedError
+//     } else {
+//         return {
+//             content: n,
+//             eventType: "IGNORE"
+//         } as unknown as parsedError
+//     }
+// }
 
 export const parseDevResponse = (res: string): devResponse => {
     try {
@@ -220,4 +295,62 @@ export const parseDevResponse = (res: string): devResponse => {
             confidenceReason: `Parsing error: ${error instanceof Error ? error.message : String(error)}`
         };
     }
+}
+
+
+export const isEmptyCommand = (input: string) => {
+    if (input.trim() === "cli-bot") {
+        return true
+    }
+    return input.trim().length === 0
+}
+
+const cmds = commandRegistry.map(cmd => cmd.command)
+
+export const confirmCmd = (cmd: string): confirmCmdType => {
+    const c = cmd.trim().toLowerCase()
+    const conatinsCmd = cmds.some(commands => commands === c)
+    if (conatinsCmd) {
+        return {
+            status: "valid",
+            command: cmd,
+
+        }
+    }
+
+    const candidate = closest(c, cmds)
+    const score = distance(c, candidate)
+
+    if (score <= 2) {
+        return {
+            status: "suggestion",
+            command: cmd,
+            suggestion: candidate,
+        }
+    }
+
+
+
+    return {
+        status: "invalid",
+        command: cmd
+    }
+
+}
+
+
+export const getRuntimeLanguage = (cmd: string) => {
+    const res = commandRegistry.find(command => command.command === cmd)
+    if (!res) {
+        return {
+            runtime: "infer from error",
+            language: "infer from error"
+        }
+    }
+
+    return {
+        runtime: res.runtime,
+        language: res.language
+    }
+
 }

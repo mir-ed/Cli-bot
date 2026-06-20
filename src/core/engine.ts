@@ -3,8 +3,8 @@
  * Optional orchestration layer (prompt building, routing, context injection)
  */
 import { timeStamp } from 'console';
-import type { User, SessionState, ChatMessage, projectInfo, parsedError, errorContext } from '../utils/types.js';
-import { randomUUID } from "crypto"
+import type { User, SessionState, ChatMessage, projectInfo, parsedError, errorContext, analysis } from '../utils/types.js';
+import { randomUUID, sign } from "crypto"
 import { program } from 'commander';
 import chalk from 'chalk';
 import figlet from 'figlet';
@@ -16,8 +16,9 @@ import { input, select } from '@inquirer/prompts';
 import { log } from 'console';
 
 import {
-    parseError,
-    parseDevResponse, classifyStderr
+    //parseError,
+    parseDevResponse, classifyStderr,
+    confirmCmd
 } from "../utils/parser.js";
 
 import {
@@ -31,6 +32,7 @@ import readline from 'readline';
 import { parseInput } from '../utils/parser.js';
 import { asyncWrapProviders } from 'async_hooks';
 import path from 'path';
+import { commandRegistry } from '../utils/error.js';
 
 export const buildSystemPrompt = (user: User): string => {
     return `
@@ -288,17 +290,42 @@ export const LinkWorksSpace = async () => {
 }
 
 
+let isRunning = false
+
+export const handleDevModeExecution = async (stderrData: string, cmd: string, arg: string[], runtime: string | null, language: string | null) => {
+    if (isRunning) {
+        // Better UX: Instead of showing "already running", we silently print the 
+        // raw cascading error to the terminal. This way the user still sees the error log
+        // but we don't spawn multiple overlapping spinners or spam warnings.
+        process.stderr.write(chalk.red(stderrData));
+        return;
+    }
 
 
-export const handleDevModeExecution = async (stderrData: string, cmd: string, arg: string[]) => {
+
+    isRunning = true;
     const spinner = ora('dev-mode parsing error...').start();
-    const err: parsedError = await parseError(stderrData);
 
+    //const start = Number(performance.now())
     const signals = classifyStderr(stderrData);
-    console.log(signals);
+    //console.log(signals);
 
-    const context = await buildContext(cmd, arg, err);
-    const errorPrompt = await buildErrorPrompt(context);
+    // const end = Number(performance.now());
+
+
+
+    if (signals.analysis.confidenceLevel === "low") {
+        spinner.info(chalk.yellow("Low confidence in error classification."));
+        printMessage("Cli-bot", "I'm not sure about the error. Please check manually.", "cli-bot");
+        console.log(chalk.red(stderrData));
+        console.log(chalk.yellow("-".repeat(30)));
+        isRunning = false
+        return;
+    }
+
+
+    const context = await buildContext(cmd, arg, signals, runtime, language);
+    const errorPrompt = await buildErrorPrompt(context,);
     try {
         const response = await sendToApi(errorPrompt)
         spinner.succeed("Error explained successfully");
@@ -317,7 +344,8 @@ export const handleDevModeExecution = async (stderrData: string, cmd: string, ar
 
         // Print the raw error back to stderr
         process.stderr.write(chalk.red(stderrData) + "\n");
-
+        isRunning = false
+        //
         // Format UI/UX of parsed AI explanation
         let confidenceColor = chalk.gray;
         if (parsedRes.confidence.toLowerCase().includes('high')) {
@@ -359,7 +387,7 @@ export const handleDevModeExecution = async (stderrData: string, cmd: string, ar
         process.stderr.write(chalk.red(stderrData));
         spinner.fail("Error processing response");
         console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : "An unexpected error occurred"}`));
-
+        isRunning = false;
         if (context.workspaceName) {
             await logDevError(context.workspaceName, {
                 command: cmd + " " + arg.join(" "),
@@ -371,19 +399,21 @@ export const handleDevModeExecution = async (stderrData: string, cmd: string, ar
     }
 }
 
-export const buildContext = async (cmd: string, arg: string[], err: parsedError) => {
+export const buildContext = async (cmd: string, arg: string[], signals: { analysis: analysis, n: string }, runtime: string | null, language: string | null) => {
     const user = await readUserData()
     const projectInfo: projectInfo | null = await GetProjectInfo(user.activeWorkspace)
 
 
     const context: errorContext = {
         "commands": cmd + " " + arg,
-        "eventType": err.eventType,
-        "errorOutput": err.content,
-        "projectDescriptionn": projectInfo?.projectDescription,
+        "errorAnalysis": signals.analysis,
+        "errorOutput": signals.n,
+        "projectDescription": projectInfo?.projectDescription,
         "projectPath": projectInfo?.projectPath,
         "workspaceName": user.activeWorkspace,
-        "timestamp": new Date(Date.now())
+        "timestamp": new Date(Date.now()),
+        "runtime": runtime,
+        "language": language
 
     }
 
@@ -392,57 +422,77 @@ export const buildContext = async (cmd: string, arg: string[], err: parsedError)
 
 export const buildErrorPrompt = async (context: errorContext) => {
     return `
-    You are a senior software debugging assistant inside a developer tool called cli-bot Dev-Mode.
+You are a senior software debugging assistant inside a developer tool called cli-bot Dev-Mode.
 
     Your job is to analyze runtime errors from any programming language and explain them clearly and practically.
 
     This is a structured error context that you should use:
 
-    ---
-    CONTEXT: 
-    ProjectName: ${context.workspaceName}
-    ProjectDescription: ${context.projectDescriptionn}
-    ProjectPath: ${context.projectPath}
+---
 
-    Command: ${context.commands}
-    Event-type: ${context.eventType}
-    Error timestamp: ${context.timestamp}
-    Error output: ${context.errorOutput}
+CONTEXT (DO NOT INFER OUTSIDE THIS):
+ProjectName: ${context.workspaceName}
+ProjectDescription: ${context.projectDescription}
+ProjectPath: ${context.projectPath}
 
-    ---
+Command: ${context.commands}
+ErrorAnalysis: ${JSON.stringify(context.errorAnalysis, null, 2)}
+ErrorTimestamp: ${context.timestamp}
+ErrorOutput: ${context.errorOutput}
 
-    TASK: 
-    1. Explain what went wrong in simple terms. 
-    2. Identify the root cause.
-    3. Provide practical fix (not theory).
-    4. If possible, suggest how to prevent it.
-    5. Be precise and avoid guessing.
+---
 
-    ---
+CRITICAL RULES:
+- Use ONLY the provided error output and structured context.
+- DO NOT mention, reference, or expose ErrorAnalysis or any internal scoring, classification, heuristics, or signal system.
+- DO NOT describe how the error was classified or what signals were used.
+- Treat ErrorAnalysis as internal decision support only.
+- Do NOT guess missing information.
+- Do NOT hallucinate libraries, files, or functions not present in the error.
+- If root cause is uncertain, explicitly state uncertainty in confidenceReason only.
+- Base reasoning only on observable error output and context.
 
-    OUTPUT FORMAT: 
-    You MUST respond with a single, valid JSON object with the following fields, each fields should have at least 20-25 words:
-    {
-      "explanation": "A clear explanation of what went wrong in simple terms.",
-      "rootCause": "The identified root cause of the error.",
-      "fix": "A practical, actionable fix or solution.",
-      "prevention": "How to prevent this error in the future, if applicable.",
-      "confidence": "Confidence level (e.g., High, Medium, Low).",
-      "confidenceReason": "Brief explanation of why you chose this confidence level."
-    }
+---
 
-    ---
+TASK:
+1. Explain what went wrong in simple technical terms.
+2. Identify the most likely root cause strictly from observable evidence.
+3. Provide a practical fix that directly resolves the issue.
+4. Provide prevention steps for avoiding this error again.
+5. Assign confidence based on overall clarity of the error and available context.
 
-    Behavioural rules: 
-    - CRITICAL: Always return a valid JSON object.
-    - DO NOT include markdown formatting like bold (**), italics (_), or bullet points (*) in your strings.
-    - DO NOT use ellipsis (...) or other filler characters.
-    - Be concise, technical, and direct. Avoid conversational noise.
-    - Keep responses suitable for raw CLI output.
-    - Do NOT ask questions.
-    - Do NOT assume missing context.
-    - If uncertain, reduce confidence.
-    - for each session i need at least 30+ words.
-    - Focus only on the error output provided.
-    `
+---
+
+OUTPUT FORMAT (STRICT):
+Return ONLY a valid JSON object:
+
+{
+  "explanation": "Clear technical explanation strictly derived from error output.",
+  "rootCause": "Most likely root cause based on observable evidence only.",
+  "fix": "Direct actionable fix that resolves the issue immediately.",
+  "prevention": "Practical steps to prevent recurrence in future development.",
+  "confidence": "High | Medium | Low",
+  "confidenceReason": "Explain why this confidence level was assigned based on clarity and completeness of observable evidence."
+}
+
+---
+
+STYLE RULES:
+- No markdown
+- No bullet points
+- No extra keys
+- No conversational text
+- No filler phrases
+- Keep output deterministic and CLI-safe
+- Every field must be at least 25 words
+- Must remain strictly JSON-valid
+
+---
+
+FAIL-SAFE:
+If insufficient data exists:
+- do not guess
+- set confidence to Low
+- explicitly state missing information in confidenceReason
+`
 }

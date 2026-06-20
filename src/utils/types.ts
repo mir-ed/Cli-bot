@@ -32,9 +32,16 @@ export type projectInfo = {
 
 
 export type softSignal = {
+    type: string,
     softSignalScore: number,
     matchedKeyword: string[],
     confidence: number
+}
+export type analysis = {
+    finalScore: number
+    confidenceLevel: "low" | "medium" | "high"
+    topSignals: string[],
+    typeGuess: Object
 }
 
 export type parsedError = {
@@ -44,12 +51,14 @@ export type parsedError = {
 
 export type errorContext = {
     commands: string,
-    eventType: string,
+    errorAnalysis: analysis,
     errorOutput: string,
     workspaceName: string | undefined,
     projectPath: string | undefined,
-    projectDescriptionn: string | undefined,
-    timestamp: Date
+    projectDescription: string | undefined,
+    timestamp: Date,
+    runtime: string | null,
+    language: string | null
 
     // for mvp lets stop here
     // exitCode: number | null,
@@ -65,4 +74,16 @@ export type devResponse = {
     prevention: string;
     confidence: string;
     confidenceReason: string;
+}
+
+export type CommandMeta = {
+    command: string;
+    language: string | null;
+    runtime: string | null;
+};
+
+export type confirmCmdType = {
+    status: "valid" | "suggestion" | "invalid",
+    command: string,
+    suggestion?: string
 }
