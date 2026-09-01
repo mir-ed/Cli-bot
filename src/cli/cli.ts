@@ -45,7 +45,7 @@ program
             description
         };
         saveUserData(user);
-        console.log(chalk.green("User details sucessfully saved"));
+        process.stdout.write(chalk.green("User details sucessfully saved"));
     })
 
 
@@ -66,7 +66,6 @@ program
     .action(async (commandParts) => {
         const [cmd = '', ...args] = commandParts ?? [];
         const devMode = await runDevMode(cmd, args);
-        // console.log(devMode.pid)
     })
 
 program.parse(process.argv);

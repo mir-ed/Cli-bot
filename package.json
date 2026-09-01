@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "dev": "npm run build && tsx watch src/index.ts",
     "run-file": "tsx",
+    "cli" : "npm run build && npm link",
     "watch": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",

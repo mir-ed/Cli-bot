@@ -57,8 +57,8 @@ export const buildSystemPrompt = (user: User): string => {
     - If CURRENT_USER_MESSAGE is absent or empty, respond naturally based on the latest context in the chatHistory.
     `;
 
-    // - Be concise, technical, and direct. Avoid conversational noise. // add this to rules later
 }
+
 
 export const createSession = (user: User): SessionState => {
     const systemPrompt = buildSystemPrompt(user);

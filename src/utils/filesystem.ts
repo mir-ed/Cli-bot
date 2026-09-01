@@ -78,7 +78,7 @@ export const saveSession = async (data: SessionState[], workspace: string | unde
     const workspacePath = path.join(workspaceRoot, `${workspace}`),
         sessionPath = path.join(workspacePath, "session.json");
 
-    await writeFile(sessionPath, JSON.stringify(data))
+    await writeFile(sessionPath, JSON.stringify(data, null, 2), {encoding: "utf8"})
 }
 
 
@@ -86,11 +86,34 @@ export const GetMessages = async (workspace: string | undefined) => {
     const workspacePath = path.join(workspaceRoot, `${workspace}`),
         sessionPath = path.join(workspacePath, "session.json");
 
-    const messages = await readFile(sessionPath, 'utf-8'),
-        parsedMessages = JSON.parse(messages);
-    return parsedMessages[0].message;
+    const messages = await readFile(sessionPath, 'utf-8');
 
-}
+    let parsedMessages;
+
+    try {
+        parsedMessages = JSON.parse(messages);
+    } catch (error) {
+        console.error(
+            chalk.red(
+                'Session data is corrupted and could not be read. Starting a fresh session.'
+            )
+        );
+
+        return [];
+    }
+
+    if (!Array.isArray(parsedMessages) || !parsedMessages[0]?.message) {
+        console.error(
+            chalk.red(
+                'Session data is corrupted and could not be read. Starting a fresh session.'
+            )
+        );
+
+        return [];
+    }
+
+    return parsedMessages[0].message;
+};
 
 export const GetMainWorkspacePath = async (workspace: string | undefined) => {
     // const items = await getWorkspaces()

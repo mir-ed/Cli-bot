@@ -125,7 +125,3 @@ export const runDevMode = async (cmd: string, arg: string[]): Promise<ChildProce
 
 
 
-// function formatError(msg: string) {
-//     return `[Transformed error] ${msg.trim()}`
-// }
-
