@@ -1,7 +1,6 @@
 {
   "name": "sandbox",
   "version": "1.0.0",
-  "type": "module",
   "main": "index.js",
   "bin": {
     "cli-bot": "./dist/index.js"
@@ -15,7 +14,21 @@
     "watch": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+
+     "typeorm": "typeorm-ts-node-esm -d src/database/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate",
+    "migration:run": "npm run typeorm -- migration:run",
+    "migration:revert": "npm run typeorm -- migration:revert",
+    "migration:show": "npm run typeorm -- migration:show",
+    "schema:log": "npm run typeorm -- schema:log",
+    "schema:sync": "npm run typeorm -- schema:sync",
+
+    "db:tables": "sqlite3 ./cli-bot.db \".tables\"",
+    "db:schema": "sqlite3 ./cli-bot.db \".schema\"",
+    "db:migrations": "sqlite3 ./cli-bot.db \"SELECT * FROM migrations;\"",
+    "db:reset": "rm -f ./cli-bot.db && npm run migration:run",
+    "db:drop": "rm -f ./cli-bot.db"
   },
   "keywords": [],
   "author": "",
@@ -23,10 +36,9 @@
   "description": "",
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",
-    "@mmmbuto/better-sqlite3-termux": "^12.8.0-termux.1",
     "@types/figlet": "^1.7.0",
     "axios": "^1.13.5",
-    "better-sqlite3": "npm:@mmmbuto/better-sqlite3-termux@^12.8.0-termux.1",
+    "better-sqlite3": "^12.11.1",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
@@ -48,7 +60,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.9.8",
     "@vitest/coverage-v8": "^4.1.8",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
@@ -56,7 +68,7 @@
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true,
-    "@mmmbuto/better-sqlite3-termux@12.8.0-termux.1": true,
     "esbuild@0.27.7": true
-  }
+  },
+  "type": "module"
 }

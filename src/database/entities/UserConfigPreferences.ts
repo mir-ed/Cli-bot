@@ -1,4 +1,5 @@
 import { Entity, PrimaryColumn, Column, OneToMany, OneToOne, JoinColumn } from "typeorm";
+import type { Relation } from "typeorm";
 import {User} from "./User.js"
 
 @Entity("user_config_preferences")
@@ -35,5 +36,5 @@ export class UserConfigPreferences {
 
     @OneToOne( () => User, (user)=> user.config)
     @JoinColumn({name : "user_id"})
-    user!: User;
+    user!: Relation<User>;
 }

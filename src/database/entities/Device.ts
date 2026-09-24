@@ -1,5 +1,6 @@
 import { Entity, PrimaryColumn, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
 import { WorkspaceDevice } from "./WorkspaceDevice.js";
+import type { Relation } from "typeorm";
 import { User } from "./User.js";
 import { Session } from "./Session.js";
 import { OSname, SynchronizationState } from "../enums/enum.js";
@@ -65,7 +66,7 @@ export class Device {
 
     @ManyToOne( ()=> User, (user)=> user.devices)
     @JoinColumn({ name: "owner_id"})
-    owner!: User;
+    owner!: Relation<User>;
 
 
     @OneToMany( ()=>WorkspaceDevice, (workspaceDevice)=>workspaceDevice.device)

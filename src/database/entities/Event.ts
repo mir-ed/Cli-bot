@@ -1,4 +1,5 @@
 import { Entity, PrimaryColumn, Column } from "typeorm";
+import type { Relation } from "typeorm";
 
 @Entity("events")
 export class Event {

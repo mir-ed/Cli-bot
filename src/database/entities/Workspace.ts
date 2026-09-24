@@ -1,4 +1,13 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, OneToMany, JoinColumn, Unique} from "typeorm";
+import {
+    Entity,
+    PrimaryColumn,
+    Column,
+    ManyToOne,
+    OneToMany,
+    JoinColumn,
+    Unique
+} from "typeorm";
+import type { Relation } from "typeorm";
 import { User } from "./User.js";
 import { WorkspaceDevice } from "./WorkspaceDevice.js";
 import { Session } from "./Session.js";
@@ -21,15 +30,13 @@ export class Workspace {
     @Column("text")
     created_at!: string;
 
-
     @ManyToOne(() => User, (user) => user.workspace)
     @JoinColumn({ name: "owner_id" })
-    owner!: User;
-
+    owner!: Relation<User>;
 
     @OneToMany(() => WorkspaceDevice, (workspaceDevice) => workspaceDevice.workspace)
-    workspace_devices !: WorkspaceDevice[]
+    workspace_devices!: Relation<WorkspaceDevice[]>;
 
     @OneToMany(() => Session, (session) => session.workspace)
-    sessions!: Session[];
+    sessions!: Relation<Session[]>;
 }

@@ -2,6 +2,7 @@ import {
     Entity, PrimaryColumn, Column, ManyToOne,
     OneToMany,
     JoinColumn, } from "typeorm";
+import type { Relation } from "typeorm";
 
 import { Session } from "./Session.js";
 import { Request } from "./Request.js";
@@ -26,10 +27,10 @@ export class Input {
 
     @ManyToOne(() => Session, (session) => session.inputs)
     @JoinColumn({ name: "session_id" })
-    session!: Session;
+    session!: Relation<Session>;
 
     @OneToMany(() => Request, (request) => request.input)
-    requests!: Request[];
+    requests!: Relation<Request[]>;
 }
 
 

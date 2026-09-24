@@ -1,6 +1,7 @@
-import { Entity, PrimaryColumn, Column, OneToMany, OneToOne } from "typeorm";
-import {Device} from "./Device.js";
-import {Workspace} from "./Workspace.js";
+import { Entity, PrimaryColumn, Column, OneToMany, OneToOne} from "typeorm";
+import type { Relation } from "typeorm";
+import { Device } from "./Device.js";
+import { Workspace } from "./Workspace.js";
 import { UserConfigPreferences } from "./UserConfigPreferences.js";
 import { UserSecretsCredentials } from "./UserSecretsCredentials.js";
 
@@ -15,15 +16,15 @@ export class User {
     @Column("text")
     user_description!: string;
 
-    @OneToMany(()=> Device, (device) => device.owner)
-    devices!: Device[];
+    @OneToMany(() => Device, (device) => device.owner)
+    devices!: Relation<Device[]>;
 
-    @OneToMany (()=>Workspace, (workspace)=>workspace.owner)
-    workspace!: Workspace[];
+    @OneToMany(() => Workspace, (workspace) => workspace.owner)
+    workspace!: Relation<Workspace[]>;
 
-    @OneToOne ( ()=> UserConfigPreferences, (config)=> config.user)
-    config!: UserConfigPreferences[];
+    @OneToOne(() => UserConfigPreferences, (config) => config.user)
+    config!: Relation<UserConfigPreferences>;
 
-    @OneToMany ( ()=> UserSecretsCredentials, (credential)=> credential.user)
-    credential!: UserSecretsCredentials[];
+    @OneToMany(() => UserSecretsCredentials, (credential) => credential.user)
+    credential!: Relation<UserSecretsCredentials[]>;
 }

@@ -3,7 +3,7 @@ import {
     OneToMany,
     JoinColumn,
 } from "typeorm";
-
+import type { Relation } from "typeorm";
 import { Request } from "./Request.js";
 import { ProcessOutput } from "./ProcessOutput.js";
 
@@ -51,13 +51,13 @@ export class Process {
 
     @OneToOne(() => Request, (request) => request.process)
     @JoinColumn({ name: "request_id" })
-    request!: Request;
+    request!: Relation<Request>;
 
     @OneToMany(
         () => ProcessOutput,
         (output) => output.process
     )
-    outputs!: ProcessOutput[];
+    outputs!: Relation<ProcessOutput[]>;
 }
 
 

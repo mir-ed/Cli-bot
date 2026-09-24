@@ -3,7 +3,7 @@ import {
     OneToOne,
     JoinColumn, } from "typeorm";
 
-
+import type { Relation } from "typeorm";
 import { Request } from "./Request.js";
 import { ActionProposal } from "./ActionProposal.js";
 
@@ -41,11 +41,11 @@ export class AIResponse {
 
     @OneToOne(() => Request, (request) => request.ai_response)
     @JoinColumn({ name: "request_id" })
-    request!: Request;
+    request!: Relation<Request>;
 
     @OneToOne(
         () => ActionProposal,
         (proposal) => proposal.ai_response
     )
-    action_proposal!: ActionProposal;
+    action_proposal!: Relation<ActionProposal>;
 }

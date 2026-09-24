@@ -1,5 +1,6 @@
 import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn} from "typeorm";
 import {User} from "./User.js";
+import type { Relation } from "typeorm";
 import { credentialType, credentialStatus } from "../enums/enum.js";
 
 @Entity("user_secrets_credentials")
@@ -42,5 +43,5 @@ export class UserSecretsCredentials {
 
     @ManyToOne(()=> User, (user) => user.credential)
     @JoinColumn({name : "user_id"})
-    user!: User;
+    user!: Relation<User>;
 }

@@ -5,7 +5,7 @@ import {
     JoinColumn,
 } from "typeorm";
 
-
+import type { Relation } from "typeorm";
 import { Process } from "./Process.js";
 import { StreamType } from "../enums/enum.js";
 
@@ -36,6 +36,6 @@ export class ProcessOutput {
 
     @ManyToOne(() => Process, (process) => process.outputs)
     @JoinColumn({ name: "process_id" })
-    process!: Process;
+    process!: Relation<Process>;
 }
 

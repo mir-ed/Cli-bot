@@ -2,6 +2,7 @@ import {
     Entity, PrimaryColumn, Column,
     OneToOne,
     JoinColumn, } from "typeorm";
+    import type { Relation } from "typeorm";
 
 import { AIResponse } from "./AIResponse.js";
 import { ActionStatus } from "../enums/enum.js";
@@ -38,5 +39,5 @@ export class ActionProposal {
         (response) => response.action_proposal
     )
     @JoinColumn({ name: "ai_output_id" })
-    ai_response!: AIResponse;
+    ai_response!: Relation<AIResponse>;
 }

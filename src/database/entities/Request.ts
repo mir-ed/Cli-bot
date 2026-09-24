@@ -2,7 +2,7 @@ import {
     Entity, PrimaryColumn, Column, ManyToOne,
     OneToOne,
     JoinColumn, } from "typeorm";
-
+import type { Relation } from "typeorm";
 import { Input } from "./Input.js";
 import { Process } from "./Process.js";
 import { AIResponse } from "./AIResponse.js";
@@ -48,13 +48,13 @@ export class Request {
 
     @ManyToOne(() => Input, (input) => input.requests)
     @JoinColumn({ name: "input_id" })
-    input!: Input;
+    input!: Relation<Input>;
 
     @OneToOne(() => Process, (process) => process.request)
-    process!: Process;
+    process!: Relation<Process>;
 
     @OneToOne(() => AIResponse, (response) => response.request)
-    ai_response!: AIResponse;
+    ai_response!: Relation<AIResponse>;
 }
 
 

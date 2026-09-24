@@ -3,6 +3,7 @@ import { Workspace } from "./Workspace.js";
 import { Device } from "./Device.js";
 import { Input } from "./Input.js";
 import { SessionStatus } from "../enums/enum.js";
+import type { Relation } from "typeorm";
 
 @Entity("sessions")
 export class Session {
@@ -29,12 +30,12 @@ export class Session {
 
     @ManyToOne(() => Workspace, (workspace) => workspace.sessions)
     @JoinColumn({ name: "workspace_id" })
-    workspace!: Workspace;
+    workspace!: Relation<Workspace>;
 
     @ManyToOne(() => Device, (device) => device.sessions)
     @JoinColumn({ name: "device_id" })
-    device!: Device;
+    device!: Relation<Device>;
 
     @OneToMany(() => Input, (input) => input.session)
-    inputs!: Input[];
+    inputs!: Relation<Input[]>;
 }
