@@ -27,4 +27,7 @@ yarn-error.log*
 *.db-wal
 *.db-shm
 *.sqlite
-*.sqlite3.local-data/
+*.sqlite3
+.local-data/
+.local-data
+/build
