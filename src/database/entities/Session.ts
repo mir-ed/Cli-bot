@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, OneToMany, JoinColumn} from "typeorm";
+import { Entity, PrimaryColumn, Column, ManyToOne, OneToMany, JoinColumn, PrimaryGeneratedColumn} from "typeorm";
 import { Workspace } from "./Workspace.js";
 import { Device } from "./Device.js";
 import { Input } from "./Input.js";
@@ -7,7 +7,7 @@ import type { Relation } from "typeorm";
 
 @Entity("sessions")
 export class Session {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     session_id!: string;
 
     @Column("text")

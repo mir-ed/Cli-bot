@@ -5,7 +5,8 @@ import {
     ManyToOne,
     OneToMany,
     JoinColumn,
-    Unique
+    Unique,
+    PrimaryGeneratedColumn
 } from "typeorm";
 import type { Relation } from "typeorm";
 import { User } from "./User.js";
@@ -15,7 +16,7 @@ import { Session } from "./Session.js";
 @Entity("workspaces")
 @Unique(["owner_id", "workspace_name"])
 export class Workspace {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     workspace_id!: string;
 
     @Column("text")

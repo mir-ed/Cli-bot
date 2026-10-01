@@ -1,10 +1,10 @@
-import { Entity, PrimaryColumn, Column, OneToMany, OneToOne, JoinColumn } from "typeorm";
+import { Entity, PrimaryColumn, Column, OneToMany, OneToOne, JoinColumn , PrimaryGeneratedColumn} from "typeorm";
 import type { Relation } from "typeorm";
 import {User} from "./User.js"
 
 @Entity("user_config_preferences")
 export class UserConfigPreferences {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     config_id!: string;
 
     @Column("text", {unique : true})

@@ -1,7 +1,7 @@
 import {
     Entity, PrimaryColumn, Column, ManyToOne,
     OneToMany,
-    JoinColumn, } from "typeorm";
+    JoinColumn,PrimaryGeneratedColumn } from "typeorm";
 import type { Relation } from "typeorm";
 
 import { Session } from "./Session.js";
@@ -9,7 +9,7 @@ import { Request } from "./Request.js";
 
 @Entity("inputs")
 export class Input {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     input_id!: string;
 
     @Column("text")

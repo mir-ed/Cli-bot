@@ -1,7 +1,7 @@
 import {
     Entity, PrimaryColumn, Column, ManyToOne,
     OneToOne,
-    JoinColumn, } from "typeorm";
+    JoinColumn,PrimaryGeneratedColumn } from "typeorm";
 import type { Relation } from "typeorm";
 import { Input } from "./Input.js";
 import { Process } from "./Process.js";
@@ -12,7 +12,7 @@ import { RequestType, ResquestStatus } from "../enums/enum.js";
 
 @Entity("requests")
 export class Request {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     request_id!: string;
 
     @Column("text")

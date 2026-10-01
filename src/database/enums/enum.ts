@@ -10,14 +10,15 @@ export enum credentialStatus {
 }
 
 export enum OSname {
-    ANDROID = "ANDROID",
-    WINDOWS = "WINDOWS",
-    UBUNTU = "UBUNTU",
-    DEBAIN = "DEBIAN",
-    ARCH_LINUX = "ARCH_LINUX",
-    MACOS = "MACOS"
+  ANDROID = "ANDROID",
+  WINDOWS = "WINDOWS",
+  UBUNTU = "UBUNTU",
+  DEBIAN = "DEBIAN",          
+  ARCH_LINUX = "ARCH_LINUX",
+  MACOS = "MACOS",
+  LINUX = "LINUX",            
+  UNKNOWN = "UNKNOWN",        
 }
-
 export enum SynchronizationState {
     SYNCED = "SYNCED",
     PENDING = "PENDING", 

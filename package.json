@@ -6,7 +6,8 @@
     "cli-bot": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js --external:terminal-image",
+    "build:clean": "rm -rf dist && npm run build",
     "start": "node dist/index.js",
     "dev": "npm run build && tsx watch src/index.ts",
     "run-file": "tsx",
@@ -15,15 +16,13 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-
-     "typeorm": "typeorm-ts-node-esm -d src/database/data-source.ts",
+    "typeorm": "tsx ./node_modules/typeorm/cli.js -d src/database/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
     "migration:show": "npm run typeorm -- migration:show",
     "schema:log": "npm run typeorm -- schema:log",
     "schema:sync": "npm run typeorm -- schema:sync",
-
     "db:tables": "sqlite3 ./cli-bot.db \".tables\"",
     "db:schema": "sqlite3 ./cli-bot.db \".schema\"",
     "db:migrations": "sqlite3 ./cli-bot.db \"SELECT * FROM migrations;\"",
@@ -40,6 +39,7 @@
     "axios": "^1.13.5",
     "better-sqlite3": "^12.11.1",
     "boxen": "^8.0.1",
+    "cfonts": "^3.3.1",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
@@ -47,12 +47,12 @@
     "dotenv": "^17.3.1",
     "express": "^4.22.1",
     "fastest-levenshtein": "^1.0.16",
-    "figlet": "^1.11.0",
     "gradient-string": "^3.0.0",
     "node-pty": "^1.1.0",
     "ora": "^9.4.0",
     "readline": "^1.3.0",
     "reflect-metadata": "^0.2.2",
+    "terminal-image": "^5.0.1",
     "typeorm": "^1.1.1",
     "vitest": "^4.1.8",
     "zigpty": "^0.2.1"

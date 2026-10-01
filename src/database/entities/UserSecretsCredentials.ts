@@ -1,11 +1,11 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn} from "typeorm";
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, PrimaryGeneratedColumn} from "typeorm";
 import {User} from "./User.js";
 import type { Relation } from "typeorm";
 import { credentialType, credentialStatus } from "../enums/enum.js";
 
 @Entity("user_secrets_credentials")
 export class UserSecretsCredentials {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     credential_id!: string;
 
     @Column("text")

@@ -2,10 +2,12 @@ import { log } from 'console';
 import type { User, SessionState, projectInfo } from './types.js';
 import { writeFile, readFile, mkdir, readdir, appendFile } from 'fs/promises'
 import path from 'path';
-import { fileURLToPath } from 'url';
 import chalk from 'chalk';
+import os from "node:os";
+import fs from "fs"
 
-const __filename = fileURLToPath(import.meta.url);
+
+const __filename = process.argv[1] ?? "";
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..", "..");
 
@@ -13,6 +15,13 @@ const storagePathResolved = path.join(projectRoot, "storage");
 const UserDataFilePath = path.join(storagePathResolved, "user.json");
 const workspaceRoot = path.join(storagePathResolved, "workspaces");
 
+export function getCliBotDir() :string {
+     const dir = process.env.CLI_BOT_HOME ?? path.join(os.homedir(), ".cli-bot");
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
 
 export const saveUserData = async (user: User) => {
     try {

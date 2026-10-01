@@ -3,6 +3,7 @@ import {
     OneToOne,
     ManyToOne,
     JoinColumn,
+    PrimaryGeneratedColumn
 } from "typeorm";
 
 import type { Relation } from "typeorm";
@@ -13,7 +14,7 @@ import { StreamType } from "../enums/enum.js";
 
 @Entity("process_outputs")
 export class ProcessOutput {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     output_id!: string;
 
     @Column("text")

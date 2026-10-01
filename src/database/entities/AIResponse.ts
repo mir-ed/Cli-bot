@@ -1,7 +1,7 @@
 import {
     Entity, PrimaryColumn, Column,
     OneToOne,
-    JoinColumn, } from "typeorm";
+    JoinColumn, PrimaryGeneratedColumn} from "typeorm";
 
 import type { Relation } from "typeorm";
 import { Request } from "./Request.js";
@@ -11,7 +11,7 @@ import { AIResponseType } from "../enums/enum.js";
 
 @Entity("ai_responses")
 export class AIResponse {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     id!: string;
 
     @Column("text", { unique: true })

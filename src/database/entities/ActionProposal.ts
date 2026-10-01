@@ -1,7 +1,7 @@
 import {
     Entity, PrimaryColumn, Column,
     OneToOne,
-    JoinColumn, } from "typeorm";
+    JoinColumn,PrimaryGeneratedColumn } from "typeorm";
     import type { Relation } from "typeorm";
 
 import { AIResponse } from "./AIResponse.js";
@@ -9,7 +9,7 @@ import { ActionStatus } from "../enums/enum.js";
 
 @Entity("action_proposals")
 export class ActionProposal {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     action_id!: string;
 
     @Column("text", { unique: true })

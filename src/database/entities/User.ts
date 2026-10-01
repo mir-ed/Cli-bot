@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, OneToMany, OneToOne} from "typeorm";
+import { Entity, PrimaryColumn, Column, OneToMany, OneToOne, PrimaryGeneratedColumn} from "typeorm";
 import type { Relation } from "typeorm";
 import { Device } from "./Device.js";
 import { Workspace } from "./Workspace.js";
@@ -7,7 +7,7 @@ import { UserSecretsCredentials } from "./UserSecretsCredentials.js";
 
 @Entity("users")
 export class User {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     user_id!: string;
 
     @Column("text")

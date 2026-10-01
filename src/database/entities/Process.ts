@@ -2,6 +2,7 @@ import {
     Entity, PrimaryColumn, Column, OneToOne,
     OneToMany,
     JoinColumn,
+    PrimaryGeneratedColumn
 } from "typeorm";
 import type { Relation } from "typeorm";
 import { Request } from "./Request.js";
@@ -11,7 +12,7 @@ import { ProcessState } from "../enums/enum.js"
 
 @Entity("processes")
 export class Process {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     process_id!: string;
 
     @Column("text")

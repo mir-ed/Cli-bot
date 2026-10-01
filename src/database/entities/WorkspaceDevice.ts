@@ -5,10 +5,10 @@ import { Device } from "./Device.js";
 
 @Entity("workspace_devices")
 export class WorkspaceDevice {
-    @PrimaryColumn("text")
+    @PrimaryColumn("uuid")
     workspace_id!: string;
 
-    @PrimaryColumn("text")
+    @PrimaryColumn("uuid")
     device_id!: string;
 
     @Column("text")

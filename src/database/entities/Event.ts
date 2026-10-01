@@ -1,9 +1,9 @@
-import { Entity, PrimaryColumn, Column } from "typeorm";
+import { Entity, PrimaryColumn, Column , PrimaryGeneratedColumn} from "typeorm";
 import type { Relation } from "typeorm";
 
 @Entity("events")
 export class Event {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     event_id!: string;
 
     @Column("text")

@@ -1,7 +1,6 @@
 
 import { program } from 'commander';
 import chalk from 'chalk';
-import figlet from 'figlet';
 import gradient from 'gradient-string';
 import boxen from 'boxen';
 import ora from 'ora';

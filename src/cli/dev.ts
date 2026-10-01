@@ -23,6 +23,7 @@ import { processError } from 'vitest/internal/browser';
 import { input, select } from '@inquirer/prompts';
 import { cliBotDisplayPage } from './displayPage.js';
 import { log } from 'console';
+import { init } from '../bootstrap/orchestrator.js';
 
 export const runDevMode = async (cmd: string, arg: string[]): Promise<ChildProcess | undefined> => {
 
@@ -34,7 +35,8 @@ export const runDevMode = async (cmd: string, arg: string[]): Promise<ChildProce
     const isEmpty = isEmptyCommand(`${command + args}`)
 
     if (isEmpty) {
-        cliBotDisplayPage()
+       // cliBotDisplayPage()
+       init()
         return;
     }
 

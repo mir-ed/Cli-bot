@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
+import { Entity, PrimaryColumn, Column, ManyToOne, OneToMany, JoinColumn , PrimaryGeneratedColumn} from "typeorm";
 import { WorkspaceDevice } from "./WorkspaceDevice.js";
 import type { Relation } from "typeorm";
 import { User } from "./User.js";
@@ -7,7 +7,7 @@ import { OSname, SynchronizationState } from "../enums/enum.js";
 
 @Entity("devices")
 export class Device {
-    @PrimaryColumn("text")
+    @PrimaryGeneratedColumn("uuid")
     device_id!: string;
 
     @Column("text")

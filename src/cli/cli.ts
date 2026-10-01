@@ -4,7 +4,7 @@
  */
 import { program } from 'commander';
 import chalk from 'chalk';
-import figlet from 'figlet';
+import cfonts from 'cfonts';
 import gradient from 'gradient-string';
 import boxen from 'boxen';
 import ora from 'ora';
@@ -23,20 +23,21 @@ import { runDevMode } from './dev.js';
 program
     .name("Cli-bot")
     .description("A Terminal-Based Developer Assistant")
-    .version("1.0.0");
+    .version("2.0.0");
 
+      
 program
     .command("info")
     .description("Information about the user")
     .action(async () => {
 
-        const asciiArt = figlet.textSync('Introduce yourself', {
-            font: 'Standard',
-            width: 60,
-            horizontalLayout: 'fitted'
-        });
-
-        console.log(gradient.pastel.multiline(asciiArt));
+        // const asciiArt = figlet.textSync('Introduce yourself', {
+        //     font: 'Standard',
+        //     width: 60,
+        //     horizontalLayout: 'fitted'
+        // });
+   cfonts.say('Introduce yourself', { font: 'block', colors: ['cyan'] });
+      //  console.log(gradient.pastel.multiline(asciiArt));
         let userName: string = await input({ message: chalk.yellow("Enter your name: ") }),
             description: string = await input({ message: chalk.yellow("Enter a short description about yourself: ") });
 
@@ -55,8 +56,9 @@ program
     .description("Start interactive chat mode")
     .action(async () => {
         console.log(chalk.bgBlue.white.bold(' CHAT MODE ') + chalk.blue(' Started!\n'));
-        const asciiArt = figlet.textSync('Chat mode', { horizontalLayout: 'full' });
-        console.log(gradient.pastel.multiline(asciiArt));
+        // const asciiArt = figlet.textSync('Chat mode', { horizontalLayout: 'full' });
+        // console.log(gradient.pastel.multiline(asciiArt));
+        cfonts.say('Chat mode', { font: 'block', colors: ['cyan'] })
         await initiateChat();
         await replLoop();
     });
