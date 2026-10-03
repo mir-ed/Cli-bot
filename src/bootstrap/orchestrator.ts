@@ -1,8 +1,9 @@
-import { initialiseIfNeeded } from "./bootstrapTools.js"
+import { initialiseIfNeeded, resolveWorkspace } from "./bootstrapTools.js"
 
 
 export const init = async ()=>{
-   const environmentInfo =  await initialiseIfNeeded();
-  console.log(environmentInfo);
+   const UserInfo =  await initialiseIfNeeded();
+   const wd = await resolveWorkspace(UserInfo);
+  console.log(wd);
   
 }

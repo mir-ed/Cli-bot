@@ -3,7 +3,7 @@ import fs from "fs";
 import chalk from "chalk";
 import os, { userInfo } from "node:os";
 import { input } from "@inquirer/prompts";
-import { saveToTable, readTable } from "../repository/repo.js";
+import { saveToTable, readTable , findInTable} from "../repository/repo.js";
 
 
 import { getCliBotDir } from "../utils/filesystem.js";
@@ -11,7 +11,7 @@ import { initDb } from "../repository/initDb.js";
 import { OSname, SynchronizationState } from "../database/enums/enum.js";
 import type { User } from "../utils/types.js";
 
-export interface DeviceInfo {
+interface DeviceInfo {
   installation_id: string;
   device_name: string;
   device_label: string;
@@ -29,7 +29,7 @@ export interface DeviceInfo {
   created_at: string;
 }
 
-export function getDeviceInfo(appVersion: string): DeviceInfo {
+function getDeviceInfo(appVersion: string): DeviceInfo {
   const now = new Date().toISOString();
   const platform = os.platform();
   const hostname = os.hostname();
@@ -111,12 +111,12 @@ const octopusLines = [
 
 
 
-export interface UserInfo {
+interface UserInfo {
   username: string;
   user_description: string;
 }
 
-export async function getUserInfo(): Promise<UserInfo> {
+async function getUserInfo(): Promise<UserInfo> {
   printLogo();
   printIntro();
 
@@ -125,7 +125,7 @@ export async function getUserInfo(): Promise<UserInfo> {
   });
 
   const user_description = await input({
-    message: chalk.yellow("Enter a short description about yourself: "),
+    message: chalk.yellow("Tell cli-bot who you are and what you do.\n(Optional. Helps cli-bot give better answers.)\n>"),
   });
 
   return { username, user_description };
@@ -185,3 +185,51 @@ export const initialiseIfNeeded = async () => {
     throw new Error(`Failed to initialize DB: ${error}`, { cause: error });
   }
 };
+
+
+interface WorkspaceInfo {
+  workspace_name: string;
+  workspace_description: string;
+  owner_id: string;
+  created_at: string;
+}
+
+async function getWorkspaceInfo(user_id : string): Promise<WorkspaceInfo> {
+  const workspace_name = await input({
+    message: chalk.yellow("Enter workspace name: "),
+  });
+
+  const workspace_description = await input({
+    message: chalk.yellow("What are you building here? A quick line helps cli-bot understand your project: "),
+  });
+
+
+  const now = new Date().toISOString();
+
+  return {
+    workspace_name,
+    workspace_description,
+    owner_id: user_id,
+    created_at: now
+  };
+}
+
+
+export const resolveWorkspace = async (UserInfo : {user: any; device: any; workspacePath: string;}) => {
+  const {user, device , workspacePath} = UserInfo;
+  const wd = await findInTable("workspace_devices", {
+    device_id : device.device_id,
+    path: workspacePath
+  })
+
+  if(wd === false) {
+     // TODO: wrap the two inserts in a single transaction so a partial
+    // write can't leave an orphan workspace in the db
+      const currentWorkspace = await saveToTable("workspaces", await getWorkspaceInfo(user.user_id));
+      const New_wd = { workspace_id : currentWorkspace.workspace_id, path : workspacePath, device_id : device.device_id}
+      const workspace_devices = await saveToTable("workspace_devices", New_wd);
+      return workspace_devices 
+  }
+  
+   return wd
+}

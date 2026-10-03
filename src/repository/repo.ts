@@ -48,3 +48,27 @@ export async function readTable(tableName: string) {
   const db = getDb();
   return db.getRepository(entity).findOne({ where: {} , loadRelationIds: true,});
 }
+
+export async function existsInTable(
+  tableName: string,
+  where: Record<string, any>,
+): Promise<boolean> {
+  if (!Object.hasOwn(entityMap, tableName))
+    throw new Error(`Unknown table: ${tableName}`);
+  const entity = entityMap[tableName];
+  const db = getDb();
+  return db.getRepository(entity).exists({ where });
+}
+
+export async function findInTable(
+  tableName: string,
+  where: Record<string, any>,
+): Promise<any | false> {
+  if (!Object.hasOwn(entityMap, tableName))
+    throw new Error(`Unknown table: ${tableName}`);
+
+  const entity = entityMap[tableName];
+  const db = getDb();
+  const row = await db.getRepository(entity).findOne({ where });
+  return row ?? false;
+}
