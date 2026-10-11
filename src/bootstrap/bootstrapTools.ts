@@ -1,15 +1,21 @@
 import path from "path";
 import fs from "fs";
 import chalk from "chalk";
+import gradient from "gradient-string";
 import os, { userInfo } from "node:os";
 import { input } from "@inquirer/prompts";
 import { saveToTable, readTable , findInTable} from "../repository/repo.js";
+import { SessionStatus } from "../database/enums/enum.js";
+import { runDevMode } from "../cli/dev.js";
 
+import readline from "node:readline";
+import type { Session } from "../database/entities/Session.js";
 
 import { getCliBotDir } from "../utils/filesystem.js";
 import { initDb } from "../repository/initDb.js";
 import { OSname, SynchronizationState } from "../database/enums/enum.js";
 import type { User } from "../utils/types.js";
+import { Interface } from "node:readline";
 
 interface DeviceInfo {
   installation_id: string;
@@ -36,6 +42,8 @@ function getDeviceInfo(appVersion: string): DeviceInfo {
   const arch = os.arch();
 
   return {
+
+    // TO-DO : include the instalation_id in the install script.
     installation_id: "install-1",
     device_name: hostname,
     device_label: hostname,
@@ -214,6 +222,11 @@ async function getWorkspaceInfo(user_id : string): Promise<WorkspaceInfo> {
   };
 }
 
+export interface Wd {
+  workspace_id : string,
+  device_id : string,
+  path : string
+}
 
 export const resolveWorkspace = async (UserInfo : {user: any; device: any; workspacePath: string;}) => {
   const {user, device , workspacePath} = UserInfo;
@@ -228,8 +241,102 @@ export const resolveWorkspace = async (UserInfo : {user: any; device: any; works
       const currentWorkspace = await saveToTable("workspaces", await getWorkspaceInfo(user.user_id));
       const New_wd = { workspace_id : currentWorkspace.workspace_id, path : workspacePath, device_id : device.device_id}
       const workspace_devices = await saveToTable("workspace_devices", New_wd);
+      
       return workspace_devices 
   }
   
+
+  
    return wd
 }
+
+
+
+export interface SessionInfo {
+  workspace_id: string;
+  device_id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: SessionStatus;
+}
+
+
+function getSessionInfo(workspaceId: string, deviceId: string): SessionInfo {
+  return {
+    workspace_id: workspaceId,
+    device_id: deviceId,
+    started_at: new Date().toISOString(),
+    ended_at: null,
+    status: SessionStatus.ACTIVE,
+  };
+}
+
+export const createSession = async (wd : Wd)=>{
+const session = await saveToTable("sessions", getSessionInfo(wd.workspace_id, wd.device_id));
+return session
+}
+
+async function endSession(session: Session): Promise<void> {
+  try {
+    await saveToTable("sessions", {
+      session_id: session.session_id,
+      ended_at: new Date().toISOString(),
+      status: SessionStatus.ENDED,
+    });
+  } catch (err) {
+    console.error("failed to end session:", err);
+  }
+}
+
+
+const accent = chalk.hex("#E07B24");
+const dim = chalk.dim;
+
+const PROMPT = accent.bold("› ");
+const BOT_NAME = accent.bold("cli-bot");
+
+// TO-DO : deal with when a user initialization did not finish or stopped halfway.
+export function launchRuntime(session: Session): void {
+  console.log(`\n${BOT_NAME} ${dim("· ready")}`);
+  console.log(`${dim("Type a message and press Enter. Ctrl+C to exit.")}\n`);
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true,
+    prompt: PROMPT,
+  });
+
+  rl.prompt();
+
+  rl.on("line", async (line) => {
+    const trimmed = line.trim();
+    if (trimmed === "") {
+      rl.prompt();
+      return;
+    }
+
+    //     // split into command + args, send to runDevMode
+    // const parts = trimmed.split(/\s+/);
+    // await routeCommand(parts);
+    
+    // TODO: send to the Main I/O Pipeline
+    console.log(dim("→ pipeline:"), trimmed);
+
+    rl.prompt();
+  });
+
+  rl.on("close", async () => {
+    await endSession(session);
+    console.log(`\n${dim("bye.")}`);
+    process.exit(0);
+  });
+
+  process.on("SIGINT", async () => {
+    await endSession(session);
+    console.log(`\n${dim("bye.")}`);
+    process.exit(0);
+  });
+}
+
+

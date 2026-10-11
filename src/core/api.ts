@@ -4,7 +4,7 @@
  */
 
 import axios from "axios";
-import dotenv from "dotenv";
+// import dotenv from "dotenv";
 import path from "path";
 
 
@@ -12,8 +12,8 @@ const __filename = process.argv[1] ?? "";
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..", "..");
 
-const envPath = path.join(projectRoot, "/.env");
-dotenv.config({ path: envPath });
+// const envPath = path.join(projectRoot, "/.env");
+// dotenv.config({ path: envPath });
 
 const apiKey: any = process.env.API_KEY;
 const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
