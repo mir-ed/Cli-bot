@@ -42,7 +42,13 @@ vi.mock("../database/entities/ActionProposal.js", () => ({
 }));
 
 import { getDb } from "./initDb.js";
-import { saveToTable, readTable, existsInTable, findInTable } from "./repo.js";
+import {
+  saveToTable,
+  saveTransaction,
+  readTable,
+  existsInTable,
+  findInTable,
+} from "./repo.js";
 import { User } from "../database/entities/User.js";
 import { Device } from "../database/entities/Device.js";
 import { Workspace } from "../database/entities/Workspace.js";
@@ -97,10 +103,21 @@ const repository = {
 };
 const getRepository = vi.fn();
 
+// Transaction handles: `transaction` runs the callback with a fake entity
+// manager whose repository is `txRepository` (separate from the plain
+// `repository`, so tests can prove writes go through the transaction).
+const txRepository = { save: vi.fn() };
+const txGetRepository = vi.fn();
+const transaction = vi.fn();
+
 beforeEach(() => {
   vi.resetAllMocks();
   getRepository.mockReturnValue(repository);
-  vi.mocked(getDb).mockReturnValue({ getRepository } as any);
+  txGetRepository.mockReturnValue(txRepository);
+  transaction.mockImplementation(async (callback: (manager: any) => unknown) =>
+    callback({ getRepository: txGetRepository }),
+  );
+  vi.mocked(getDb).mockReturnValue({ getRepository, transaction } as any);
 });
 
 
@@ -145,6 +162,278 @@ describe("saveToTable", () => {
     });
 
     await expect(saveToTable("users", {})).rejects.toThrow("DB not initialised");
+  });
+});
+
+
+
+describe("saveTransaction", () => {
+  it.each(TABLES)(
+    "maps '%s' to its entity and saves the payload",
+    async (table, entity) => {
+      const payload = { some: "data" };
+      txRepository.save.mockResolvedValue({ ...payload, id: 1 });
+
+      const result = await saveTransaction([{ table, data: payload }]);
+
+      expect(txGetRepository).toHaveBeenCalledWith(entity);
+      expect(txRepository.save).toHaveBeenCalledWith(payload);
+      expect(result).toEqual([{ some: "data", id: 1 }]);
+    },
+  );
+
+  it("runs all writes inside a single db.transaction", async () => {
+    txRepository.save.mockResolvedValue({});
+
+    await saveTransaction([
+      { table: "users", data: {} },
+      { table: "devices", data: {} },
+    ]);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves through the transaction's manager, never the plain repository", async () => {
+    txRepository.save.mockResolvedValue({});
+
+    await saveTransaction([
+      { table: "users", data: {} },
+      { table: "devices", data: {} },
+    ]);
+
+    expect(txGetRepository).toHaveBeenCalledTimes(2);
+    expect(getRepository).not.toHaveBeenCalled();
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it("passes plain-object payloads through untouched (same reference)", async () => {
+    const payload = { workspace_name: "my-app" };
+    txRepository.save.mockResolvedValue(payload);
+
+    await saveTransaction([{ table: "workspaces", data: payload }]);
+
+    expect(txRepository.save.mock.calls[0]![0]).toBe(payload);
+  });
+
+  it("saves the writes in the order given", async () => {
+    txRepository.save.mockResolvedValue({});
+
+    await saveTransaction([
+      { table: "users", data: { n: 1 } },
+      { table: "devices", data: { n: 2 } },
+      { table: "sessions", data: { n: 3 } },
+    ]);
+
+    expect(txGetRepository.mock.calls.map((call) => call[0])).toEqual([
+      User,
+      Device,
+      Session,
+    ]);
+    expect(txRepository.save.mock.calls.map((call) => call[0])).toEqual([
+      { n: 1 },
+      { n: 2 },
+      { n: 3 },
+    ]);
+  });
+
+  it("returns the saved rows in the same order as the writes", async () => {
+    const savedUser = { user_id: "u1" };
+    const savedDevice = { device_id: "d1" };
+    txRepository.save
+      .mockResolvedValueOnce(savedUser)
+      .mockResolvedValueOnce(savedDevice);
+
+    const result = await saveTransaction([
+      { table: "users", data: {} },
+      { table: "devices", data: {} },
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(savedUser);
+    expect(result[1]).toBe(savedDevice);
+  });
+
+  it("returns an empty array and saves nothing for an empty list", async () => {
+    await expect(saveTransaction([])).resolves.toEqual([]);
+
+    expect(txRepository.save).not.toHaveBeenCalled();
+  });
+
+  describe("data as a function", () => {
+    it("calls it with the rows saved so far (empty for the first write)", async () => {
+      const snapshots: unknown[][] = [];
+      const first = vi.fn((previous: any[]) => {
+        snapshots.push([...previous]);
+        return { n: 1 };
+      });
+      const second = vi.fn((previous: any[]) => {
+        snapshots.push([...previous]);
+        return { n: 2 };
+      });
+      const third = vi.fn((previous: any[]) => {
+        snapshots.push([...previous]);
+        return { n: 3 };
+      });
+      txRepository.save
+        .mockResolvedValueOnce({ id: "a" })
+        .mockResolvedValueOnce({ id: "b" })
+        .mockResolvedValueOnce({ id: "c" });
+
+      await saveTransaction([
+        { table: "users", data: first },
+        { table: "devices", data: second },
+        { table: "sessions", data: third },
+      ]);
+
+      expect(snapshots).toEqual([[], [{ id: "a" }], [{ id: "a" }, { id: "b" }]]);
+    });
+
+    it("saves whatever the function returns", async () => {
+      txRepository.save
+        .mockResolvedValueOnce({ user_id: "user-1" })
+        .mockResolvedValueOnce({ device_id: "dev-1" });
+
+      await saveTransaction([
+        { table: "users", data: { username: "Ada" } },
+        {
+          table: "devices",
+          data: ([user]: any[]) => ({ device_name: "box", owner_id: user.user_id }),
+        },
+      ]);
+
+      expect(txRepository.save).toHaveBeenNthCalledWith(2, {
+        device_name: "box",
+        owner_id: "user-1",
+      });
+    });
+
+    it("can mix plain objects and functions in one transaction", async () => {
+      txRepository.save
+        .mockResolvedValueOnce({ workspace_id: "w1" })
+        .mockResolvedValueOnce({ link: true });
+
+      const result = await saveTransaction([
+        { table: "workspaces", data: { workspace_name: "my-app" } },
+        {
+          table: "workspace_devices",
+          data: ([workspace]: any[]) => ({
+            workspace_id: workspace.workspace_id,
+            path: "/work/proj",
+          }),
+        },
+      ]);
+
+      expect(txRepository.save).toHaveBeenNthCalledWith(1, {
+        workspace_name: "my-app",
+      });
+      expect(txRepository.save).toHaveBeenNthCalledWith(2, {
+        workspace_id: "w1",
+        path: "/work/proj",
+      });
+      expect(result).toEqual([{ workspace_id: "w1" }, { link: true }]);
+    });
+
+    it("does not treat a plain object payload as a function", async () => {
+      txRepository.save.mockResolvedValue({});
+      const payload = { a: 1 };
+
+      await saveTransaction([{ table: "users", data: payload }]);
+
+      expect(txRepository.save).toHaveBeenCalledWith(payload);
+    });
+  });
+
+  describe("failures (rollback)", () => {
+    it("rejects with the repository error when a save fails", async () => {
+      const failure = new Error("UNIQUE constraint failed");
+      txRepository.save.mockRejectedValue(failure);
+
+      await expect(
+        saveTransaction([{ table: "users", data: {} }]),
+      ).rejects.toBe(failure);
+    });
+
+    it("stops at the first failing write and never runs the later ones", async () => {
+      const failure = new Error("constraint failed");
+      txRepository.save
+        .mockResolvedValueOnce({ user_id: "u1" })
+        .mockRejectedValueOnce(failure);
+
+      await expect(
+        saveTransaction([
+          { table: "users", data: {} },
+          { table: "devices", data: {} },
+          { table: "sessions", data: {} },
+        ]),
+      ).rejects.toBe(failure);
+
+      expect(txRepository.save).toHaveBeenCalledTimes(2);
+    });
+
+    it("rejects (so the transaction rolls back) when a data function throws", async () => {
+      const failure = new Error("bad payload");
+      txRepository.save.mockResolvedValue({ user_id: "u1" });
+
+      await expect(
+        saveTransaction([
+          { table: "users", data: {} },
+          {
+            table: "devices",
+            data: () => {
+              throw failure;
+            },
+          },
+          { table: "sessions", data: {} },
+        ]),
+      ).rejects.toBe(failure);
+
+      expect(txRepository.save).toHaveBeenCalledTimes(1);
+    });
+
+    it("propagates a rejection from db.transaction itself (e.g. commit fails)", async () => {
+      const failure = new Error("commit failed");
+      transaction.mockRejectedValue(failure);
+
+      await expect(
+        saveTransaction([{ table: "users", data: {} }]),
+      ).rejects.toBe(failure);
+    });
+
+    it("propagates errors thrown while obtaining the DB (e.g. not initialised)", async () => {
+      vi.mocked(getDb).mockImplementation(() => {
+        throw new Error("DB not initialised");
+      });
+
+      await expect(
+        saveTransaction([{ table: "users", data: {} }]),
+      ).rejects.toThrow("DB not initialised");
+    });
+  });
+
+  describe("table validation", () => {
+    it("rejects an invalid table anywhere in the list, before opening a transaction", async () => {
+      await expect(
+        saveTransaction([
+          { table: "users", data: {} },
+          { table: "nope", data: {} },
+        ]),
+      ).rejects.toThrow("Unknown table: nope");
+
+      expect(getDb).not.toHaveBeenCalled();
+      expect(transaction).not.toHaveBeenCalled();
+      expect(txRepository.save).not.toHaveBeenCalled();
+    });
+
+    it("does not run any data function when a later table is invalid", async () => {
+      const data = vi.fn(() => ({}));
+
+      await saveTransaction([
+        { table: "users", data },
+        { table: "nope", data: {} },
+      ]).catch(() => {});
+
+      expect(data).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -278,6 +567,7 @@ describe("findInTable", () => {
 describe("unknown table names", () => {
   const operations: Array<[string, (table: string) => Promise<unknown>]> = [
     ["saveToTable", (t) => saveToTable(t, {})],
+    ["saveTransaction", (t) => saveTransaction([{ table: t, data: {} }])],
     ["readTable", (t) => readTable(t)],
     ["existsInTable", (t) => existsInTable(t, {})],
     ["findInTable", (t) => findInTable(t, {})],

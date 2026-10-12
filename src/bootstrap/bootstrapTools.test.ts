@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
-import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Hoisted mock handles (vi.mock factories are hoisted above imports)
 // ---------------------------------------------------------------------------
 const m = vi.hoisted(() => ({
-  existsSync: vi.fn(),
   readFileSync: vi.fn(),
   platform: vi.fn(),
   hostname: vi.fn(),
@@ -15,16 +13,18 @@ const m = vi.hoisted(() => ({
   userInfo: vi.fn(),
   input: vi.fn(),
   saveToTable: vi.fn(),
+  saveTransaction: vi.fn(),
   readTable: vi.fn(),
   findInTable: vi.fn(),
   initDb: vi.fn(),
   getCliBotDir: vi.fn(),
   createInterface: vi.fn(),
   runDevMode: vi.fn(),
+  getInstallationId: vi.fn(),
 }));
 
 vi.mock("fs", () => ({
-  default: { existsSync: m.existsSync, readFileSync: m.readFileSync },
+  default: { readFileSync: m.readFileSync },
 }));
 
 vi.mock("node:os", () => ({
@@ -46,10 +46,14 @@ vi.mock("@inquirer/prompts", () => ({ input: m.input }));
 
 vi.mock("../repository/repo.js", () => ({
   saveToTable: m.saveToTable,
+  saveTransaction: m.saveTransaction,
   readTable: m.readTable,
   findInTable: m.findInTable,
 }));
 
+vi.mock("../utils/installationId.js", () => ({
+  getInstallationId: m.getInstallationId,
+}));
 vi.mock("../repository/initDb.js", () => ({ initDb: m.initDb }));
 vi.mock("../utils/filesystem.js", () => ({ getCliBotDir: m.getCliBotDir }));
 vi.mock("../cli/dev.js", () => ({ runDevMode: m.runDevMode }));
@@ -85,8 +89,29 @@ let exitSpy: ReturnType<typeof vi.spyOn>;
 const loggedText = (): string =>
   logSpy.mock.calls.map((call: unknown[]) => call.map(strip).join(" ")).join("\n");
 
+// Every write passed to the mocked saveTransaction, with function payloads
+// already resolved against the results of the earlier writes.
+let resolvedWrites: { table: string; data: any }[];
+
+// Fake saveTransaction: runs the writes in order, resolves `data` functions
+// against earlier results (like the real one), and returns `rows` in order.
+function mockTransaction(rows: any[]) {
+  m.saveTransaction.mockImplementation(
+    async (writes: { table: string; data: any }[]) => {
+      const results: any[] = [];
+      for (const [i, { table, data }] of writes.entries()) {
+        const payload = typeof data === "function" ? data(results) : data;
+        resolvedWrites.push({ table, data: payload });
+        results.push(rows[i]);
+      }
+      return results;
+    },
+  );
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
+  resolvedWrites = [];
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
 
@@ -98,8 +123,8 @@ beforeEach(() => {
   vi.spyOn(process, "cwd").mockReturnValue(WORKSPACE_PATH);
 
   m.getCliBotDir.mockReturnValue(CLI_DIR);
+  m.getInstallationId.mockReturnValue("install-test-id");
   m.initDb.mockResolvedValue(undefined);
-  m.existsSync.mockReturnValue(false);
   m.platform.mockReturnValue("linux");
   m.hostname.mockReturnValue("dev-box");
   m.arch.mockReturnValue("x64");
@@ -123,22 +148,27 @@ describe("initialiseIfNeeded", () => {
   };
   const DEVICE = { device_id: "dev-1" };
 
+  // readTable returns the stored rows (already bootstrapped).
+  function arrangeBootstrapped() {
+    m.readTable.mockImplementation(async (table: string) =>
+      table === "users" ? USER : DEVICE,
+    );
+  }
+
+  // readTable finds nothing, so onboarding runs and the transaction saves.
   function arrangeFirstRun() {
-    m.existsSync.mockReturnValue(false);
+    m.readTable.mockResolvedValue(null);
     m.input.mockResolvedValueOnce("Ada").mockResolvedValueOnce("backend dev");
-    m.saveToTable.mockResolvedValueOnce(USER).mockResolvedValueOnce(DEVICE);
+    mockTransaction([USER, DEVICE]);
   }
 
   function devicePayload(): Record<string, unknown> {
-    return m.saveToTable.mock.calls[1]![1];
+    return resolvedWrites[1]!.data;
   }
 
-  describe("when the database already exists (not first run)", () => {
+  describe("when the user and device already exist (already bootstrapped)", () => {
     beforeEach(() => {
-      m.existsSync.mockReturnValue(true);
-      m.readTable.mockImplementation(async (table: string) =>
-        table === "users" ? USER : DEVICE,
-      );
+      arrangeBootstrapped();
     });
 
     it("returns the stored user and device with the current working directory", async () => {
@@ -164,6 +194,7 @@ describe("initialiseIfNeeded", () => {
 
       expect(m.input).not.toHaveBeenCalled();
       expect(m.saveToTable).not.toHaveBeenCalled();
+      expect(m.saveTransaction).not.toHaveBeenCalled();
       expect(logSpy).not.toHaveBeenCalled();
     });
 
@@ -172,51 +203,89 @@ describe("initialiseIfNeeded", () => {
 
       expect(m.initDb).toHaveBeenCalledWith(CLI_DIR);
     });
-
-    it("returns whatever readTable yields when the tables are empty", async () => {
-      m.readTable.mockResolvedValue(null);
-
-      const result = await initialiseIfNeeded();
-
-      expect(result.user).toBeNull();
-      expect(result.device).toBeNull();
-    });
-
-    it.todo(
-      "should fail clearly (or re-run onboarding) when cli-bot.db exists but has no user/device row",
-    );
   });
 
-  describe("first run detection", () => {
-    it("checks for <cliBotDir>/cli-bot.db", async () => {
-      arrangeFirstRun();
+  describe("bootstrap detection", () => {
+    it("runs initDb BEFORE reading the users table", async () => {
+      arrangeBootstrapped();
 
       await initialiseIfNeeded();
 
-      expect(m.existsSync).toHaveBeenCalledWith(path.join(CLI_DIR, "cli-bot.db"));
-    });
-
-    it("checks for the db file BEFORE initDb creates it", async () => {
-      arrangeFirstRun();
-
-      await initialiseIfNeeded();
-
-      const existsOrder = m.existsSync.mock.invocationCallOrder[0]!;
       const initOrder = m.initDb.mock.invocationCallOrder[0]!;
-      expect(existsOrder).toBeLessThan(initOrder);
+      const readOrder = m.readTable.mock.invocationCallOrder[0]!;
+      expect(initOrder).toBeLessThan(readOrder);
     });
 
-    it("propagates initDb failures unwrapped and does not prompt", async () => {
+    it("propagates initDb failures unwrapped and does not read, prompt or save", async () => {
       const failure = new Error("cannot open db");
       m.initDb.mockRejectedValue(failure);
 
       await expect(initialiseIfNeeded()).rejects.toBe(failure);
+      expect(m.readTable).not.toHaveBeenCalled();
       expect(m.input).not.toHaveBeenCalled();
       expect(m.saveToTable).not.toHaveBeenCalled();
+      expect(m.saveTransaction).not.toHaveBeenCalled();
+    });
+
+    it("runs onboarding when both tables are empty", async () => {
+      arrangeFirstRun();
+
+      const result = await initialiseIfNeeded();
+
+      expect(m.input).toHaveBeenCalledTimes(2);
+      expect(m.saveTransaction).toHaveBeenCalledTimes(1);
+      expect(result.user).toBe(USER);
+      expect(result.device).toBe(DEVICE);
+    });
+
+    it("runs onboarding when the db exists but has no user (setup stopped halfway)", async () => {
+      m.readTable.mockImplementation(async (table: string) =>
+        table === "devices" ? DEVICE : null,
+      );
+      m.input.mockResolvedValueOnce("Ada").mockResolvedValueOnce("backend dev");
+      mockTransaction([USER, DEVICE]);
+
+      await initialiseIfNeeded();
+
+      expect(m.input).toHaveBeenCalledTimes(2);
+      expect(m.saveTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs onboarding when the user exists but the device is missing", async () => {
+      m.readTable.mockImplementation(async (table: string) =>
+        table === "users" ? USER : null,
+      );
+      m.input.mockResolvedValueOnce("Ada").mockResolvedValueOnce("backend dev");
+      mockTransaction([USER, DEVICE]);
+
+      await initialiseIfNeeded();
+
+      expect(m.input).toHaveBeenCalledTimes(2);
+      expect(m.saveTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it("asks again on the next run after the user aborted the prompts", async () => {
+      m.readTable.mockResolvedValue(null);
+      m.input.mockRejectedValueOnce(new Error("User force closed the prompt"));
+
+      await expect(initialiseIfNeeded()).rejects.toThrow("Failed to initialize DB:");
+      expect(m.saveTransaction).not.toHaveBeenCalled();
+
+      m.input.mockResolvedValueOnce("Ada").mockResolvedValueOnce("backend dev");
+      mockTransaction([USER, DEVICE]);
+
+      const result = await initialiseIfNeeded();
+
+      expect(result.user).toBe(USER);
+      expect(m.saveTransaction).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("when it is the first run", () => {
+    beforeEach(() => {
+      m.readTable.mockResolvedValue(null);
+    });
+
     it("prints the logo and welcome text", async () => {
       arrangeFirstRun();
 
@@ -246,22 +315,42 @@ describe("initialiseIfNeeded", () => {
 
       await initialiseIfNeeded();
 
-      expect(m.saveToTable).toHaveBeenNthCalledWith(1, "users", {
-        username: "Ada",
-        user_description: "backend dev",
+      expect(resolvedWrites[0]).toEqual({
+        table: "users",
+        data: {
+          username: "Ada",
+          user_description: "backend dev",
+        },
       });
     });
 
     it("allows an empty (optional) description", async () => {
       m.input.mockResolvedValueOnce("Ada").mockResolvedValueOnce("");
-      m.saveToTable.mockResolvedValueOnce(USER).mockResolvedValueOnce(DEVICE);
+      mockTransaction([USER, DEVICE]);
 
       await initialiseIfNeeded();
 
-      expect(m.saveToTable).toHaveBeenNthCalledWith(1, "users", {
-        username: "Ada",
-        user_description: "",
+      expect(resolvedWrites[0]).toEqual({
+        table: "users",
+        data: {
+          username: "Ada",
+          user_description: "",
+        },
       });
+    });
+
+    it("saves the user and device in a single transaction", async () => {
+      arrangeFirstRun();
+
+      await initialiseIfNeeded();
+
+      expect(m.saveTransaction).toHaveBeenCalledTimes(1);
+      expect(m.saveToTable).not.toHaveBeenCalled();
+      const writes = m.saveTransaction.mock.calls[0]![0];
+      expect(writes.map((w: { table: string }) => w.table)).toEqual([
+        "users",
+        "devices",
+      ]);
     });
 
     it("saves the device owned by the newly created user", async () => {
@@ -269,8 +358,8 @@ describe("initialiseIfNeeded", () => {
 
       await initialiseIfNeeded();
 
-      expect(m.saveToTable).toHaveBeenCalledTimes(2);
-      expect(m.saveToTable.mock.calls[1]![0]).toBe("devices");
+      expect(resolvedWrites).toHaveLength(2);
+      expect(resolvedWrites[1]!.table).toBe("devices");
       expect(devicePayload().owner_id).toBe("user-1");
     });
 
@@ -292,7 +381,7 @@ describe("initialiseIfNeeded", () => {
       await initialiseIfNeeded();
 
       expect(devicePayload()).toEqual({
-        installation_id: expect.any(String),
+        installation_id: "install-test-id",
         device_name: "dev-box",
         device_label: "dev-box",
         os_name: OSname.LINUX,
@@ -402,7 +491,7 @@ describe("initialiseIfNeeded", () => {
       it("wraps a failure saving the user and preserves the cause", async () => {
         const cause = new Error("db down");
         m.input.mockResolvedValue("x");
-        m.saveToTable.mockRejectedValueOnce(cause);
+        m.saveTransaction.mockRejectedValueOnce(cause);
 
         const error = await initialiseIfNeeded().catch((e) => e);
 
@@ -411,15 +500,16 @@ describe("initialiseIfNeeded", () => {
         expect(error.cause).toBe(cause);
       });
 
-      it("wraps a failure saving the device", async () => {
+      it("wraps a failure saving the device (whole transaction is rolled back)", async () => {
         const cause = new Error("constraint failed");
         m.input.mockResolvedValue("x");
-        m.saveToTable.mockResolvedValueOnce(USER).mockRejectedValueOnce(cause);
+        m.saveTransaction.mockRejectedValueOnce(cause);
 
         const error = await initialiseIfNeeded().catch((e) => e);
 
         expect(error.message).toBe("Failed to initialize DB: Error: constraint failed");
         expect(error.cause).toBe(cause);
+        expect(m.saveTransaction).toHaveBeenCalledTimes(1);
       });
 
       it("wraps a prompt failure (e.g. user aborts) and saves nothing", async () => {
@@ -431,6 +521,7 @@ describe("initialiseIfNeeded", () => {
         expect(error.message).toContain("Failed to initialize DB:");
         expect(error.cause).toBe(cause);
         expect(m.saveToTable).not.toHaveBeenCalled();
+        expect(m.saveTransaction).not.toHaveBeenCalled();
       });
     });
   });
@@ -471,6 +562,7 @@ describe("resolveWorkspace", () => {
 
       expect(m.input).not.toHaveBeenCalled();
       expect(m.saveToTable).not.toHaveBeenCalled();
+      expect(m.saveTransaction).not.toHaveBeenCalled();
     });
   });
 
@@ -485,9 +577,7 @@ describe("resolveWorkspace", () => {
     beforeEach(() => {
       m.findInTable.mockResolvedValue(false);
       m.input.mockResolvedValueOnce("my-app").mockResolvedValueOnce("a todo API");
-      m.saveToTable
-        .mockResolvedValueOnce(createdWorkspace)
-        .mockResolvedValueOnce(createdLink);
+      mockTransaction([createdWorkspace, createdLink]);
     });
 
     it("asks for the workspace name and description, in that order", async () => {
@@ -502,49 +592,65 @@ describe("resolveWorkspace", () => {
       );
     });
 
+    it("asks the questions BEFORE opening the transaction", async () => {
+      await resolveWorkspace(ctx);
+
+      const lastPrompt = m.input.mock.invocationCallOrder[1]!;
+      const txOrder = m.saveTransaction.mock.invocationCallOrder[0]!;
+      expect(lastPrompt).toBeLessThan(txOrder);
+    });
+
     it("creates the workspace owned by the user, with a creation timestamp", async () => {
       await resolveWorkspace(ctx);
 
-      expect(m.saveToTable).toHaveBeenNthCalledWith(1, "workspaces", {
-        workspace_name: "my-app",
-        workspace_description: "a todo API",
-        owner_id: "user-1",
-        created_at: NOW_ISO,
+      expect(resolvedWrites[0]).toEqual({
+        table: "workspaces",
+        data: {
+          workspace_name: "my-app",
+          workspace_description: "a todo API",
+          owner_id: "user-1",
+          created_at: NOW_ISO,
+        },
       });
     });
 
     it("links the new workspace to this device and path", async () => {
       await resolveWorkspace(ctx);
 
-      expect(m.saveToTable).toHaveBeenNthCalledWith(2, "workspace_devices", {
-        workspace_id: "w-new",
-        path: WORKSPACE_PATH,
-        device_id: "dev-1",
+      expect(resolvedWrites[1]).toEqual({
+        table: "workspace_devices",
+        data: {
+          workspace_id: "w-new",
+          path: WORKSPACE_PATH,
+          device_id: "dev-1",
+        },
       });
+    });
+
+    it("writes the workspace and the link in a single transaction", async () => {
+      await resolveWorkspace(ctx);
+
+      expect(m.saveTransaction).toHaveBeenCalledTimes(1);
+      expect(m.saveToTable).not.toHaveBeenCalled();
+      const writes = m.saveTransaction.mock.calls[0]![0];
+      expect(writes.map((w: { table: string }) => w.table)).toEqual([
+        "workspaces",
+        "workspace_devices",
+      ]);
     });
 
     it("returns the saved workspace_devices row", async () => {
       await expect(resolveWorkspace(ctx)).resolves.toBe(createdLink);
     });
 
-    it("does not create the link if creating the workspace fails", async () => {
-      m.saveToTable.mockReset();
+    it("rejects when the transaction fails (nothing is partially written)", async () => {
+      m.saveTransaction.mockReset();
       const failure = new Error("insert failed");
-      m.saveToTable.mockRejectedValueOnce(failure);
+      m.saveTransaction.mockRejectedValueOnce(failure);
 
       await expect(resolveWorkspace(ctx)).rejects.toBe(failure);
-      expect(m.saveToTable).toHaveBeenCalledTimes(1);
-    });
-
-    it("rejects when linking fails (workspace row is already written - see TODO in source)", async () => {
-      m.saveToTable.mockReset();
-      const failure = new Error("link failed");
-      m.saveToTable
-        .mockResolvedValueOnce(createdWorkspace)
-        .mockRejectedValueOnce(failure);
-
-      await expect(resolveWorkspace(ctx)).rejects.toBe(failure);
-      expect(m.saveToTable).toHaveBeenCalledTimes(2);
+      expect(m.saveTransaction).toHaveBeenCalledTimes(1);
+      expect(m.saveToTable).not.toHaveBeenCalled();
     });
   });
 
@@ -554,6 +660,7 @@ describe("resolveWorkspace", () => {
 
     await expect(resolveWorkspace(ctx)).rejects.toBe(failure);
     expect(m.saveToTable).not.toHaveBeenCalled();
+    expect(m.saveTransaction).not.toHaveBeenCalled();
   });
 });
 

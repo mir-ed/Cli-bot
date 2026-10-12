@@ -72,3 +72,26 @@ export async function findInTable(
   const row = await db.getRepository(entity).findOne({ where });
   return row ?? false;
 }
+
+
+type TxWrite = {
+  table: string;
+  data: any | ((previous: any[]) => any);
+};
+
+export async function saveTransaction(writes: TxWrite[]): Promise<any[]> {
+  for (const { table } of writes) {
+    if (!Object.hasOwn(entityMap, table))
+      throw new Error(`Unknown table: ${table}`);
+  }
+
+  const db = getDb();
+  return db.transaction(async (manager) => {
+    const results: any[] = [];
+    for (const { table, data } of writes) {
+      const payload = typeof data === "function" ? data(results) : data;
+      results.push(await manager.getRepository(entityMap[table]).save(payload));
+    }
+    return results;
+  });
+}

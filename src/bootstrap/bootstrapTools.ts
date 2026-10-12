@@ -4,7 +4,7 @@ import chalk from "chalk";
 import gradient from "gradient-string";
 import os, { userInfo } from "node:os";
 import { input } from "@inquirer/prompts";
-import { saveToTable, readTable , findInTable} from "../repository/repo.js";
+import { saveToTable, readTable , findInTable, saveTransaction} from "../repository/repo.js";
 import { SessionStatus } from "../database/enums/enum.js";
 import { runDevMode } from "../cli/dev.js";
 
@@ -14,8 +14,12 @@ import type { Session } from "../database/entities/Session.js";
 import { getCliBotDir } from "../utils/filesystem.js";
 import { initDb } from "../repository/initDb.js";
 import { OSname, SynchronizationState } from "../database/enums/enum.js";
-import type { User } from "../utils/types.js";
+//import type { User } from "../utils/types.js";
 import { Interface } from "node:readline";
+import type { User } from "../database/entities/User.js";
+import type { Workspace } from "../database/entities/Workspace.js";
+import type { WorkspaceDevice } from "../database/entities/WorkspaceDevice.js";
+import { getInstallationId } from "../utils/installationId.js";
 
 interface DeviceInfo {
   installation_id: string;
@@ -44,7 +48,7 @@ function getDeviceInfo(appVersion: string): DeviceInfo {
   return {
 
     // TO-DO : include the instalation_id in the install script.
-    installation_id: "install-1",
+    installation_id: getInstallationId(),
     device_name: hostname,
     device_label: hostname,
     os_name: mapPlatformToOSname(platform),
@@ -139,61 +143,171 @@ async function getUserInfo(): Promise<UserInfo> {
   return { username, user_description };
 }
 
-function printLogo(): void {
-  console.log("");
-  for (const line of octopusLines) {
-    console.log(chalk.hex("#FF8C00")(line));   // orange
+// function printLogo(): void {
+//   console.log("");
+//   for (const line of octopusLines) {
+//     console.log(chalk.hex("#FF8C00")(line));   // orange
+//   }
+//   console.log("");
+//   console.log(
+//     chalk.hex("#FF8C00").bold("              CLI-BOT") +
+//       chalk.gray("   ·   terminal developer assistant"),
+//   );
+//   console.log("");
+// }
+
+// function printIntro(): void {
+//   const orange = chalk.hex("#FF8C00");
+//   const rule = chalk.gray("─".repeat(58));
+//   const pillar = (name: string, text: string, example: string) => {
+//     console.log(`  ${orange.bold(name.padEnd(8))}${text}`);
+//     console.log(`  ${" ".repeat(8)}${chalk.gray(example)}`);
+//   };
+
+//   console.log(chalk.cyan.bold("Welcome."));
+//   console.log("");
+//   console.log(
+//     [
+//       "Cli-bot is an AI-native terminal agent that understands",
+//       "your project, operates your local development environment,",
+//       "diagnoses errors, and helps you reason about your codebase",
+//       "— without leaving the terminal.",
+//     ].join("\n"),
+//   );
+//   console.log("");
+
+//   pillar("OPERATE", "Control your environment in plain English", "cli-bot start my server");
+//   pillar("DEBUG", "Errors diagnosed, fixed with your approval, verified", "EADDRINUSE :3000  →  kill 18472? [Y/n]");
+//   pillar("THINK", "Chat about your actual codebase", "cli-bot chat");
+
+//   console.log("");
+//   console.log(
+//     chalk.gray("Local-first: your files and commands stay on your machine.\nAI is only used for reasoning, with your own API key."),
+//   );
+//   console.log("");
+//   console.log(rule);
+//   console.log(chalk.white.bold("Let's get you set up") + chalk.gray(" — two quick questions."));
+//   console.log(rule);
+//   console.log("");
+// }
+
+const DESCRIPTION =
+  "Cli-bot is an AI-native terminal agent that understands your project, " +
+  "operates your local development environment, diagnoses errors, and helps " +
+  "you reason about your codebase — without leaving the terminal.";
+
+function wrap(text: string, width: number): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const word of text.split(" ")) {
+    if (current && (current + " " + word).length > width) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? current + " " + word : word;
+    }
   }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function printLogo(): void {
+  const orange = chalk.hex("#FF8C00");
+  const logoWidth = Math.max(...octopusLines.map((l) => l.length));
+  const gap = "   ";
+  const MIN_TEXT = 28; // "terminal developer assistant" must fit on one line
+  const MAX_TEXT = 44;
+
+  const columns = process.stdout.columns || 80;
+  const available = columns - logoWidth - gap.length;
+  const sideBySide = available >= MIN_TEXT;
+  const textWidth = Math.min(available, MAX_TEXT);
+
+  const side = [
+    orange.bold("CLI-BOT"),
+    chalk.gray("terminal developer assistant"),
+    "",
+    ...wrap(DESCRIPTION, sideBySide ? textWidth : columns),
+  ];
+
   console.log("");
-  console.log(
-    chalk.hex("#FF8C00").bold("              CLI-BOT") +
-      chalk.gray("   ·   terminal developer assistant"),
-  );
+  if (!sideBySide) {
+    for (const line of octopusLines) console.log(orange(line));
+    console.log("");
+    for (const line of side) console.log(line);
+    console.log("");
+    return;
+  }
+
+  // centre the text vertically next to the octopus
+  const top = Math.max(0, Math.floor((octopusLines.length - side.length) / 2));
+  const rows = Math.max(octopusLines.length, top + side.length);
+  for (let i = 0; i < rows; i++) {
+    const art = (octopusLines[i] ?? "").padEnd(logoWidth);
+    const text = side[i - top] ?? "";
+    console.log(orange(art) + gap + text);
+  }
   console.log("");
 }
 
 function printIntro(): void {
+  const orange = chalk.hex("#FF8C00");
+  const rule = chalk.gray("─".repeat(58));
+  const pillar = (name: string, text: string, example: string) => {
+    console.log(`  ${orange.bold(name.padEnd(8))}${text}`);
+    console.log(`  ${" ".repeat(8)}${chalk.gray(example)}`);
+  };
+
+
+  console.log("");
+
+  pillar("OPERATE", "Control your environment in plain English", "cli-bot start my server");
+  pillar("DEBUG", "Errors diagnosed, fixed with your approval, verified", "EADDRINUSE :3000  →  kill 18472? [Y/n]");
+  pillar("THINK", "Chat about your actual codebase", "cli-bot chat");
+
+  console.log("");
   console.log(
-    chalk.cyan("Welcome.") +
-      " Cli-bot is your terminal-based developer assistant.",
-  );
-  console.log(
-    chalk.gray("It runs anywhere, remembers your workspace, and chats in the terminal."),
+    chalk.gray("Local-first: your files and commands stay on your machine.\nAI is only used for reasoning, with your own API key."),
   );
   console.log("");
-  console.log(chalk.white.bold("Let's get you set up — two quick questions."));
+  console.log(rule);
+  console.log(chalk.white.bold("Let's get you set up") + chalk.gray(" — two quick questions."));
+  console.log(rule);
   console.log("");
 }
 
+
 export const initialiseIfNeeded = async () => {
   const workspacePath = process.cwd();
-  const dbPath = path.join(getCliBotDir(), "cli-bot.db");
-  const isFirstRun = !fs.existsSync(dbPath);
+  const cliBotDir = getCliBotDir();
+  const dbPath = path.join(cliBotDir, "cli-bot.db");
 
-  await initDb(getCliBotDir());
+  await initDb(cliBotDir);
 
-  if (!isFirstRun) {
-    const user = await readTable("users");
-    const device = await readTable("devices");
+  const user = await readTable("users");
+  const device = await readTable("devices");
+
+  // already fully bootstrapped?
+  if (user && device) {
     return { user, device, workspacePath };
   }
 
+  // first run, or a previous run stopped halfway — build it
   try {
-    const user = await saveToTable("users", await getUserInfo());
-    const info = getDeviceInfo("V1.0.0");
-    const device = await saveToTable("devices", 
-      {
-  ...info,
-  owner_id: user.user_id,
-});
+    const userInfo = await getUserInfo();
+    const deviceInfo = getDeviceInfo("V1.0.0");
 
-     // TODO: create and save user preferences
-    return { user, device, workspacePath };
+    const [newUser, newDevice] = await saveTransaction([
+      { table: "users", data: userInfo },
+      { table: "devices", data: ([u]: [User]) => ({ ...deviceInfo, owner_id: u.user_id }) },
+    ]);
+
+    // TODO: create and save user preferences
+    return { user: newUser, device: newDevice, workspacePath };
   } catch (error) {
     throw new Error(`Failed to initialize DB: ${error}`, { cause: error });
   }
 };
-
 
 interface WorkspaceInfo {
   workspace_name: string;
@@ -235,16 +349,23 @@ export const resolveWorkspace = async (UserInfo : {user: any; device: any; works
     path: workspacePath
   })
 
-  if(wd === false) {
-     // TODO: wrap the two inserts in a single transaction so a partial
-    // write can't leave an orphan workspace in the db
-      const currentWorkspace = await saveToTable("workspaces", await getWorkspaceInfo(user.user_id));
-      const New_wd = { workspace_id : currentWorkspace.workspace_id, path : workspacePath, device_id : device.device_id}
-      const workspace_devices = await saveToTable("workspace_devices", New_wd);
-      
-      return workspace_devices 
-  }
-  
+ if (wd === false) {
+  const info = await getWorkspaceInfo(user.user_id); // prompts happen BEFORE the transaction
+
+  const [, workspace_devices] = await saveTransaction([
+    { table: "workspaces", data: info },
+    {
+      table: "workspace_devices",
+      data: ([workspace] : [WorkspaceDevice]) => ({
+        workspace_id: workspace.workspace_id,
+        path: workspacePath,
+        device_id: device.device_id,
+      }),
+    },
+  ]);
+
+  return workspace_devices;
+}
 
   
    return wd
@@ -340,3 +461,4 @@ export function launchRuntime(session: Session): void {
 }
 
 
+// TO-DO : Fix empty entry for any user input
