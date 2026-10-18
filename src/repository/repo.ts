@@ -14,6 +14,7 @@ import { ProcessOutput } from "../database/entities/ProcessOutput.js";
 import { Request } from "../database/entities/Request.js";
 import { AIResponse } from "../database/entities/AIResponse.js";
 import { ActionProposal } from "../database/entities/ActionProposal.js";
+import { Outbox, Dispatch } from "../database/entities/jobs.js";
 
 const entityMap: Record<string, any> = {
   users: User,
@@ -30,15 +31,17 @@ const entityMap: Record<string, any> = {
   requests: Request,
   ai_responses: AIResponse,
   action_proposals: ActionProposal,
+  outboxes: Outbox,
+  dispatches: Dispatch
 };
 
 
 export async function saveToTable(tableName: string, data: any) {
-    if (!Object.hasOwn(entityMap, tableName)) 
-        throw new Error(`Unknown table: ${tableName}`);
-    const entity = entityMap[tableName];
-    const db = getDb();
-    return db.getRepository(entity).save(data);
+  if (!Object.hasOwn(entityMap, tableName))
+    throw new Error(`Unknown table: ${tableName}`);
+  const entity = entityMap[tableName];
+  const db = getDb();
+  return db.getRepository(entity).save(data);
 }
 
 export async function readTable(tableName: string) {
@@ -46,7 +49,7 @@ export async function readTable(tableName: string) {
     throw new Error(`Unknown table: ${tableName}`);
   const entity = entityMap[tableName];
   const db = getDb();
-  return db.getRepository(entity).findOne({ where: {} , loadRelationIds: true,});
+  return db.getRepository(entity).findOne({ where: {}, loadRelationIds: true, });
 }
 
 export async function existsInTable(

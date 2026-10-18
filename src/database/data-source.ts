@@ -7,7 +7,7 @@ import { DataSource } from "typeorm";
 const here: string =
   typeof __dirname !== "undefined" ? __dirname : import.meta.dirname;
 
-const dbPath = path.resolve(process.cwd(), ".local-data/cli-bot.db/cli-bot.db");
+const dbPath = path.resolve(process.cwd(), ".local-data/cli-bot.db");
 
 export const AppDataSource = new DataSource({
   type: "better-sqlite3",
