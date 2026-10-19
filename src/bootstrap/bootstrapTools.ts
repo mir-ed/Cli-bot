@@ -19,7 +19,10 @@ import { OSname, SynchronizationState } from "../database/enums/enum.js";
 import { Interface } from "node:readline";
 import type { User, WorkspaceDevice, Input } from "../database/entities/index.js";
 import { getInstallationId } from "../utils/installationId.js";
-import { publish, EventEntityType, EventSource, EventType } from "../events/publisher.js";
+import { publish } from "../events/publisher.js";
+import { EventType, EventEntityType, EventSource } from "../events/event.types.js";
+import { registerHandler } from "./registerHandler.js";
+import { registry } from "../events/registry.js";
 
 
 interface DeviceInfo {
@@ -283,9 +286,10 @@ export const initialiseIfNeeded = async () => {
   const cliBotDir = getCliBotDir();
   const dbPath = path.join(cliBotDir, "cli-bot.db");
 
+
   await initDb(cliBotDir);
   await initQueue(cliBotDir);
-
+  registerHandler();
 
   const user = await readTable("users");
   const device = await readTable("devices");
@@ -486,8 +490,11 @@ export function launchRuntime(session: Session): void {
     }
 
     // TODO: send to the Main I/O Pipeline
-    const input = await handleUserInput(trimmed, session.session_id)
-    console.log(dim("→ in pipeline:"), input);
+    await handleUserInput(trimmed, session.session_id);
+    const handlers = registry.getHandlers(EventType.INPUT_RECEIVED);
+    for (const h of handlers) {
+      await h.fn({ message: trimmed });
+    }
 
     rl.setPrompt(buildPrompt()); // refresh in case the directory changed
     rl.prompt();
