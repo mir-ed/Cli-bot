@@ -51,7 +51,8 @@ export async function publish(input: PublishInput): Promise<void> {
         eventBus.emit("event:published", {
             event_id: savedEvent.event_id,
             event_type: input.event_type,
-            correlationId: savedEvent.correlation_id
+            correlationId: savedEvent.correlation_id,
+            isActionable : true
         });
 
     } else {
@@ -60,7 +61,8 @@ export async function publish(input: PublishInput): Promise<void> {
         eventBus.emit("event:published", {
             event_id: savedEvent.event_id,
             event_type: input.event_type,
-            correlationId: savedEvent.correlation_id
+            correlationId: savedEvent.correlation_id,
+            isActionable: false
         });
     }
 }

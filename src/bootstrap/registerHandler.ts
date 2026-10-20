@@ -1,6 +1,7 @@
 import { registry } from "../events/registry.js";
 import { echoInput } from "../classification/handlers/inputHandler.js";
 import { EventType } from "../events/event.types.js";
+import { registerLiteQHandler } from "../repository/repo.jobs.js";
 
 export const registerHandler = () => {
     registry.register(
@@ -13,6 +14,6 @@ export const registerHandler = () => {
             fn: echoInput,
         }
     )
-    console.log("registry loaded sucessfully", registry);
-    
+
+    registerLiteQHandler("echo-input", echoInput);
 }

@@ -81,6 +81,7 @@ export async function initQueue(dataPath: string): Promise<void> {
     concurrency: 2,
     minWorkers: 1,
     maxWorkers: getWorkerCount(),
+    pollInterval: 50
   });
 
   await queue.start();

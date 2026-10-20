@@ -8,6 +8,7 @@ import { saveToTable, readTable, findInTable, saveTransaction } from "../reposit
 import { SessionStatus } from "../database/enums/enum.js";
 import { runDevMode } from "../cli/dev.js";
 import { randomUUID } from "node:crypto";
+import { setRl } from "../utils/print.js";
 
 import readline from "node:readline";
 import type { Session } from "../database/entities/Session.js";
@@ -23,6 +24,7 @@ import { publish } from "../events/publisher.js";
 import { EventType, EventEntityType, EventSource } from "../events/event.types.js";
 import { registerHandler } from "./registerHandler.js";
 import { registry } from "../events/registry.js";
+import { startDispatcher } from "../events/dispatcher.js";
 
 
 interface DeviceInfo {
@@ -290,7 +292,7 @@ export const initialiseIfNeeded = async () => {
   await initDb(cliBotDir);
   await initQueue(cliBotDir);
   registerHandler();
-
+  startDispatcher();
   const user = await readTable("users");
   const device = await readTable("devices");
 
@@ -439,7 +441,7 @@ async function handleUserInput(
 
   const savedInput: Input = await saveToTable("inputs", inputPayload);
 
-
+  console.time(`job-${correlationId}`);
   await publish({
     event_type: EventType.INPUT_RECEIVED,
     data: {
@@ -477,6 +479,7 @@ export function launchRuntime(session: Session): void {
     prompt: buildPrompt(),
   });
 
+  setRl(rl)
   let shuttingDown = false;
 
   rl.prompt();
@@ -491,10 +494,10 @@ export function launchRuntime(session: Session): void {
 
     // TODO: send to the Main I/O Pipeline
     await handleUserInput(trimmed, session.session_id);
-    const handlers = registry.getHandlers(EventType.INPUT_RECEIVED);
-    for (const h of handlers) {
-      await h.fn({ message: trimmed });
-    }
+    // const handlers = registry.getHandlers(EventType.INPUT_RECEIVED);
+    // for (const h of handlers) {
+    //   await h.fn({ message: trimmed });
+    // }
 
     rl.setPrompt(buildPrompt()); // refresh in case the directory changed
     rl.prompt();

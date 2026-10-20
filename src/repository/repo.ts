@@ -76,6 +76,17 @@ export async function findInTable(
   return row ?? false;
 }
 
+export async function findManyInTable(
+  tableName: string,
+  where: Record<string, any>,
+): Promise<any[]> {
+  if (!Object.hasOwn(entityMap, tableName))
+    throw new Error(`Unknown table: ${tableName}`);
+
+  const entity = entityMap[tableName];
+  const db = getDb();
+  return db.getRepository(entity).find({ where });
+}
 
 type TxWrite = {
   table: string;
